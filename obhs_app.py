@@ -1,3 +1,12 @@
+# --- SEMBUNYIKAN MENU & FOOTER (BIAR ANONIM) ---
+hide_menu_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """
+st.markdown(hide_menu_style, unsafe_allow_html=True)
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -161,3 +170,4 @@ for i, (label, query) in enumerate(targets.items()):
                 """, unsafe_allow_html=True)
         else:
             st.markdown("<span style='color:#555; font-size:12px;'>Zonk. Belum ada berita baru minggu ini.</span>", unsafe_allow_html=True)
+
