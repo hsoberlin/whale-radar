@@ -1,78 +1,140 @@
-import pandas as pd
+import streamlit as st
 import requests
-from io import StringIO
+from bs4 import BeautifulSoup
+from datetime import datetime
+import time
 
-def get_real_idx_stocks():
-    print("🚀 MEMULAI PROSES SCRAPING DATA SAHAM IDX...")
+# ==========================================
+# 1. VISUAL CONFIG
+# ==========================================
+st.set_page_config(page_title="TOPIC SNIPER", layout="wide", page_icon="🎯")
+
+st.markdown("""
+<style>
+    .stApp { background-color: #0E1117; color: #FAFAFA; font-family: 'Consolas', monospace; }
     
-    # 1. Gunakan URL Wikipedia (Sumber Publik Paling Stabil untuk Ticker)
-    url = "https://en.wikipedia.org/wiki/List_of_companies_listed_on_the_Indonesia_Stock_Exchange"
-    
-    # 2. TEKNIK ANTI-BLOKIR: Menyamar sebagai Browser Chrome
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    .topic-header {
+        color: #00FF41;
+        font-size: 18px;
+        font-weight: bold;
+        border-bottom: 1px solid #30363D;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        padding-bottom: 5px;
     }
+    
+    .news-item {
+        background-color: #161B22;
+        padding: 10px;
+        margin-bottom: 8px;
+        border-left: 3px solid #30363D;
+        border-radius: 4px;
+    }
+    .news-item:hover { border-left-color: #00FF41; background-color: #1C2128; }
+    
+    .news-title {
+        color: #58A6FF !important;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 15px;
+        display: block;
+    }
+    .news-meta {
+        color: #8B949E;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    .source-badge {
+        background-color: #238636;
+        color: white;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        margin-right: 5px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# ==========================================
+# 2. SNIPER ENGINE (GOOGLE NEWS RSS)
+# ==========================================
+def hunt_specific_topic(topic):
+    # Menggunakan Google News RSS Feed untuk akurasi topik
+    # q = query, when:7d = 7 hari terakhir, hl = bahasa ID
+    formatted_topic = topic.replace(" ", "+")
+    url = f"https://news.google.com/rss/search?q={formatted_topic}+when:7d&hl=id-ID&gl=ID&ceid=ID:id"
+    
     try:
-        # Request halaman dengan header
-        response = requests.get(url, headers=headers)
-        response.raise_for_status() # Cek jika ada error koneksi
+        r = requests.get(url, timeout=5)
+        soup = BeautifulSoup(r.content, features="xml") # Parsing XML
+        items = soup.find_all('item')
         
-        # Baca tabel dari konten HTML
-        # Kita mencari tabel yang punya kolom 'Stock Code' atau 'Ticker Symbol'
-        dfs = pd.read_html(StringIO(response.text))
-        
-        target_df = None
-        for df in dfs:
-            # Cek kolom untuk memastikan ini tabel saham
-            # Wikipedia sering mengubah nama header, kita cek beberapa kemungkinan
-            cols = [c.lower() for c in df.columns]
-            if any("code" in c for c in cols) and any("company" in c for c in cols):
-                target_df = df
-                break
-        
-        if target_df is None:
-            print("❌ Gagal menemukan tabel saham di halaman tersebut.")
-            return []
+        news_list = []
+        for item in items[:5]: # Ambil 5 berita teratas per topik biar gak kepenuhan
+            title = item.title.text
+            link = item.link.text
+            pub_date = item.pubDate.text
+            source = item.source.text if item.source else "Google News"
+            
+            # Format Tanggal Sederhana
+            try:
+                # Contoh: Fri, 17 Jan 2026 07:00:00 GMT
+                dt_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
+                date_str = dt_obj.strftime("%d/%m %H:%M")
+            except:
+                date_str = "Baru Saja"
 
-        # 3. BERSIHKAN DATA
-        # Ambil kolom pertama (biasanya Code)
-        target_df = target_df.rename(columns={target_df.columns[0]: 'Ticker'})
+            news_list.append({
+                "title": title,
+                "link": link,
+                "date": date_str,
+                "source": source
+            })
+        return news_list
         
-        # Pastikan Ticker adalah string 4 karakter
-        valid_stocks = []
-        for code in target_df['Ticker']:
-            clean_code = str(code).strip()[:4] # Ambil 4 huruf pertama
-            if clean_code.isalpha() and len(clean_code) == 4:
-                valid_stocks.append(clean_code)
-        
-        print(f"✅ BERHASIL: Ditemukan {len(valid_stocks)} saham aktif.")
-        return valid_stocks
-
     except Exception as e:
-        print(f"❌ TERJADI ERROR: {e}")
         return []
 
-# --- EKSEKUSI ---
-all_tickers = get_real_idx_stocks()
+# ==========================================
+# 3. DASHBOARD UI
+# ==========================================
+st.title("🎯 TOPIC SNIPER: CORPORATE ACTION")
+st.caption(f"Real-Time Hunter via Google News Feed | Update: {datetime.now().strftime('%H:%M WIB')}")
 
-if all_tickers:
-    # Simpan ke CSV agar bisa dipakai Dashboard
-    df_save = pd.DataFrame(all_tickers, columns=["Ticker"])
-    df_save.to_csv("daftar_saham_idx_fixed.csv", index=False)
-    print("📁 Data tersimpan di: daftar_saham_idx_fixed.csv")
-    
-    # Preview 10 saham pertama
-    print(f"Contoh Saham: {all_tickers[:10]}")
-else:
-    # FALLBACK JIKA SCRAPING MACET TOTAL (Agar Anda tetap punya data)
-    print("⚠️ Menggunakan Data Fallback (Top 50 Liquid)...")
-    fallback_list = [
-        "BBCA", "BBRI", "BMRI", "BBNI", "TLKM", "ASII", "UNTR", "ICBP", "INDF", "GOTO",
-        "BUKA", "EMTK", "ARTO", "BRPT", "TPIA", "BREN", "CUAN", "PTRO", "ADRO", "PTBA",
-        "ITMG", "PGAS", "MEDC", "ANTM", "MDKA", "INCO", "MBMA", "BRMS", "AMMN", "PSAB",
-        "BUMI", "DEWA", "ENRG", "BSDE", "CTRA", "SMRA", "PANI", "ASRI", "MNCN", "SCMA",
-        "KLBF", "SILO", "HEAL", "MIKA", "CPIN", "JPFA", "MYOR", "UNVR", "ACES", "MAPI"
-    ]
-    df_save = pd.DataFrame(fallback_list, columns=["Ticker"])
-    df_save.to_csv("daftar_saham_idx_fixed.csv", index=False)
+if st.button("🔥 BURU BERITA SEKARANG"):
+    st.rerun()
+
+# --- DAFTAR TARGET BURUAN (KEYWORDS) ---
+# Ini topik spesifik yang Bos minta. Bukan berita sampah.
+targets = {
+    "💰 RIGHTS ISSUE & PRIVATE PLACEMENT": "Saham Rights Issue OR Private Placement Indonesia",
+    "🤝 AKUISISI & MERGER": "Saham Akuisisi OR Merger Emiten Indonesia",
+    "🚨 TENDER OFFER": "Saham Tender Offer Wajib",
+    "🏛️ DANANTARA & BUMN": "Danantara BUMN Saham",
+    "⚠️ SUSPENSI & UMA (OJK)": "Saham Suspensi BEI OR UMA",
+    "🏗️ KONTRAK & PROYEK JUMBO": "Emiten Kontrak Baru OR Menang Tender"
+}
+
+# --- EKSEKUSI ---
+col1, col2 = st.columns(2)
+columns = [col1, col2]
+
+for i, (label, query) in enumerate(targets.items()):
+    with columns[i % 2]: # Bagi 2 kolom
+        st.markdown(f"<div class='topic-header'>{label}</div>", unsafe_allow_html=True)
+        
+        results = hunt_specific_topic(query)
+        
+        if results:
+            for news in results:
+                st.markdown(f"""
+                <div class="news-item">
+                    <a href="{news['link']}" target="_blank" class="news-title">{news['title']}</a>
+                    <div class="news-meta">
+                        <span class="source-badge">{news['source']}</span>
+                        {news['date']}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.markdown("<span style='color:#555; font-size:12px;'>Zonk. Belum ada berita baru minggu ini.</span>", unsafe_allow_html=True)
