@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta  # <--- INI SAYA TAMBAH TIMEDELTA
+from datetime import datetime, timedelta
 import time
 
 # ==========================================
@@ -52,6 +52,19 @@ st.markdown("""
         font-size: 10px;
         margin-right: 5px;
     }
+    
+    /* Tombol Refresh */
+    div.stButton > button {
+        width: 100%;
+        background-color: #238636;
+        color: white;
+        font-weight: bold;
+        border: 1px solid #30363D;
+    }
+    div.stButton > button:hover {
+        background-color: #2ea043;
+        border-color: #8b949e;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,24 +72,31 @@ st.markdown("""
 # 2. SNIPER ENGINE (GOOGLE NEWS RSS)
 # ==========================================
 def hunt_specific_topic(topic):
+    # Format query agar URL valid
     formatted_topic = topic.replace(" ", "+")
+    # URL Google News RSS (Bahasa Indonesia)
     url = f"https://news.google.com/rss/search?q={formatted_topic}+when:7d&hl=id-ID&gl=ID&ceid=ID:id"
     
     try:
-        r = requests.get(url, timeout=5)
+        r = requests.get(url, timeout=8)
         soup = BeautifulSoup(r.content, features="xml")
         items = soup.find_all('item')
         
         news_list = []
+        # Ambil maksimal 5 berita per topik
         for item in items[:5]: 
             title = item.title.text
             link = item.link.text
             pub_date = item.pubDate.text
             source = item.source.text if item.source else "Google News"
             
+            # Konversi Tanggal agar mudah dibaca
             try:
+                # Format asli: Fri, 17 Jan 2026 07:00:00 GMT
                 dt_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
-                date_str = dt_obj.strftime("%d/%m %H:%M")
+                # Tambah 7 jam manual untuk tampilan per berita (opsional, karena ini GMT)
+                dt_wib = dt_obj + timedelta(hours=7)
+                date_str = dt_wib.strftime("%d/%m %H:%M")
             except:
                 date_str = "Baru Saja"
 
@@ -96,15 +116,15 @@ def hunt_specific_topic(topic):
 # ==========================================
 st.title("🎯 TOPIC SNIPER: CORPORATE ACTION")
 
-# --- PERBAIKAN JAM WIB DI SINI ---
-# Server Streamlit itu pakai waktu UTC (Amerika/Eropa).
-# Jadi kita harus tambah 7 jam manual biar jadi WIB (Indonesia).
-wib_now = datetime.now() + timedelta(hours=7)
+# --- FIX JAM WIB (UTC + 7 JAM) ---
+# Kita pakai utcnow() biar pasti ngambil jam server nol (0), lalu tambah 7.
+utc_now = datetime.utcnow()
+wib_now = utc_now + timedelta(hours=7)
 jam_update = wib_now.strftime('%H:%M')
 
 st.caption(f"Real-Time Hunter via Google News Feed | Update: {jam_update} WIB")
 
-if st.button("🔥 BURU BERITA SEKARANG"):
+if st.button("🔥 BURU BERITA SEKARANG (REFRESH)"):
     st.rerun()
 
 # --- DAFTAR TARGET BURUAN ---
@@ -125,7 +145,8 @@ for i, (label, query) in enumerate(targets.items()):
     with columns[i % 2]: 
         st.markdown(f"<div class='topic-header'>{label}</div>", unsafe_allow_html=True)
         
-        results = hunt_specific_topic(query)
+        with st.spinner(f"Memburu {label}..."):
+            results = hunt_specific_topic(query)
         
         if results:
             for news in results:
