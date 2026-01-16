@@ -1,4 +1,16 @@
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+import time
+
+# ==========================================
+# 1. VISUAL CONFIG (WAJIB PALING ATAS)
+# ==========================================
+st.set_page_config(page_title="TOPIC SNIPER", layout="wide", page_icon="🎯")
+
 # --- SEMBUNYIKAN MENU & FOOTER (BIAR ANONIM) ---
+# Kode ini menghilangkan tombol titik tiga di pojok kanan atas & footer "Made with Streamlit"
 hide_menu_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -7,17 +19,8 @@ hide_menu_style = """
     </style>
     """
 st.markdown(hide_menu_style, unsafe_allow_html=True)
-import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-import time
 
-# ==========================================
-# 1. VISUAL CONFIG
-# ==========================================
-st.set_page_config(page_title="TOPIC SNIPER", layout="wide", page_icon="🎯")
-
+# --- CSS TAMPILAN GELAP ---
 st.markdown("""
 <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; font-family: 'Consolas', monospace; }
@@ -103,7 +106,7 @@ def hunt_specific_topic(topic):
             try:
                 # Format asli: Fri, 17 Jan 2026 07:00:00 GMT
                 dt_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
-                # Tambah 7 jam manual untuk tampilan per berita (opsional, karena ini GMT)
+                # Tambah 7 jam manual untuk tampilan per berita
                 dt_wib = dt_obj + timedelta(hours=7)
                 date_str = dt_wib.strftime("%d/%m %H:%M")
             except:
@@ -131,6 +134,7 @@ utc_now = datetime.utcnow()
 wib_now = utc_now + timedelta(hours=7)
 jam_update = wib_now.strftime('%H:%M')
 
+# Judul Bawah (Sudah Anonim & Jam Benar)
 st.caption(f"Real-Time Hunter via Google News Feed | Update: {jam_update} WIB")
 
 if st.button("🔥 BURU BERITA SEKARANG (REFRESH)"):
@@ -170,4 +174,3 @@ for i, (label, query) in enumerate(targets.items()):
                 """, unsafe_allow_html=True)
         else:
             st.markdown("<span style='color:#555; font-size:12px;'>Zonk. Belum ada berita baru minggu ini.</span>", unsafe_allow_html=True)
-
