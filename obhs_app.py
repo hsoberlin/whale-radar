@@ -2,175 +2,116 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-import time
 
 # ==========================================
-# 1. VISUAL CONFIG (WAJIB PALING ATAS)
+# 1. CORE CONFIG & ANONIM MODE
 # ==========================================
-st.set_page_config(page_title="TOPIC SNIPER", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="CA TERMINAL v26.1", layout="wide", page_icon="🎯")
 
-# --- SEMBUNYIKAN MENU & FOOTER (BIAR ANONIM) ---
-# Kode ini menghilangkan tombol titik tiga di pojok kanan atas & footer "Made with Streamlit"
-hide_menu_style = """
+# Sembunyikan jejak developer (Main Menu & Footer)
+hide_style = """
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    </style>
-    """
-st.markdown(hide_menu_style, unsafe_allow_html=True)
-
-# --- CSS TAMPILAN GELAP ---
-st.markdown("""
-<style>
-    .stApp { background-color: #0E1117; color: #FAFAFA; font-family: 'Consolas', monospace; }
+    .stApp { background-color: #050505; color: #FAFAFA; font-family: 'Consolas', monospace; }
     
     .topic-header {
-        color: #00FF41;
-        font-size: 18px;
-        font-weight: bold;
-        border-bottom: 1px solid #30363D;
-        margin-top: 20px;
-        margin-bottom: 10px;
-        padding-bottom: 5px;
+        color: #00FF41; font-size: 18px; font-weight: bold;
+        border-bottom: 2px solid #333; margin-top: 20px; padding-bottom: 5px;
     }
-    
-    .news-item {
-        background-color: #161B22;
-        padding: 10px;
-        margin-bottom: 8px;
-        border-left: 3px solid #30363D;
-        border-radius: 4px;
+    .news-card {
+        background-color: #0D0D0D; padding: 12px; border: 1px solid #222;
+        margin-bottom: 8px; border-left: 4px solid #00FF41; border-radius: 4px;
     }
-    .news-item:hover { border-left-color: #00FF41; background-color: #1C2128; }
-    
-    .news-title {
-        color: #58A6FF !important;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 15px;
-        display: block;
-    }
-    .news-meta {
-        color: #8B949E;
-        font-size: 11px;
-        margin-top: 4px;
-    }
-    .source-badge {
-        background-color: #238636;
-        color: white;
-        padding: 1px 6px;
-        border-radius: 4px;
-        font-size: 10px;
-        margin-right: 5px;
-    }
-    
-    /* Tombol Refresh */
-    div.stButton > button {
-        width: 100%;
-        background-color: #238636;
-        color: white;
-        font-weight: bold;
-        border: 1px solid #30363D;
-    }
-    div.stButton > button:hover {
-        background-color: #2ea043;
-        border-color: #8b949e;
-    }
-</style>
-""", unsafe_allow_html=True)
+    .news-title { color: #58A6FF !important; text-decoration: none; font-weight: 600; font-size: 14px; display: block; }
+    .news-meta { color: #8B949E; font-size: 11px; margin-top: 5px; }
+    .badge-source { background-color: #238636; color: white; padding: 1px 6px; border-radius: 3px; font-size: 10px; margin-right: 5px; }
+    .badge-new { background-color: #CC0000; color: white; padding: 1px 6px; border-radius: 3px; font-weight: bold; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    </style>
+"""
+st.markdown(hide_style, unsafe_allow_html=True)
 
 # ==========================================
-# 2. SNIPER ENGINE (GOOGLE NEWS RSS)
+# 2. SNIPER ENGINE (CHRONO-SORTING)
 # ==========================================
-def hunt_specific_topic(topic):
-    # Format query agar URL valid
-    formatted_topic = topic.replace(" ", "+")
-    # URL Google News RSS (Bahasa Indonesia)
-    url = f"https://news.google.com/rss/search?q={formatted_topic}+when:7d&hl=id-ID&gl=ID&ceid=ID:id"
+def hunt_realtime(topic):
+    # Mencari berita 24 jam terakhir agar selalu segar
+    query = f"{topic} when:1d"
+    formatted_query = query.replace(" ", "+")
+    url = f"https://news.google.com/rss/search?q={formatted_query}&hl=id-ID&gl=ID&ceid=ID:id"
     
     try:
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=10)
         soup = BeautifulSoup(r.content, features="xml")
         items = soup.find_all('item')
         
-        news_list = []
-        # Ambil maksimal 5 berita per topik
-        for item in items[:5]: 
+        results = []
+        for item in items:
             title = item.title.text
             link = item.link.text
             pub_date = item.pubDate.text
-            source = item.source.text if item.source else "Google News"
+            source = item.source.text if item.source else "MEDIA"
             
-            # Konversi Tanggal agar mudah dibaca
-            try:
-                # Format asli: Fri, 17 Jan 2026 07:00:00 GMT
-                dt_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
-                # Tambah 7 jam manual untuk tampilan per berita
-                dt_wib = dt_obj + timedelta(hours=7)
-                date_str = dt_wib.strftime("%d/%m %H:%M")
-            except:
-                date_str = "Baru Saja"
-
-            news_list.append({
-                "title": title,
-                "link": link,
-                "date": date_str,
-                "source": source
+            # Konversi waktu ke datetime object untuk sorting
+            dt_obj = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %Z")
+            
+            results.append({
+                "title": title, "link": link, "dt": dt_obj, "source": source
             })
-        return news_list
         
-    except Exception as e:
+        # URUTKAN BERDASARKAN WAKTU (Paling baru di atas)
+        return sorted(results, key=lambda x: x['dt'], reverse=True)[:6]
+    except:
         return []
 
 # ==========================================
-# 3. DASHBOARD UI
+# 3. DASHBOARD RENDER
 # ==========================================
-st.title("🎯 TOPIC SNIPER: CORPORATE ACTION")
+st.markdown("<h2 style='text-align:center;'>🎯 TOPIC SNIPER: CORPORATE ACTION</h2>", unsafe_allow_html=True)
 
-# --- FIX JAM WIB (UTC + 7 JAM) ---
-# Kita pakai utcnow() biar pasti ngambil jam server nol (0), lalu tambah 7.
-utc_now = datetime.utcnow()
-wib_now = utc_now + timedelta(hours=7)
-jam_update = wib_now.strftime('%H:%M')
+# Jam WIB Real-time
+wib_now = datetime.utcnow() + timedelta(hours=7)
+st.caption(f"Real-Time Hunter | Server Sync: {wib_now.strftime('%H:%M:%S')} WIB")
 
-# Judul Bawah (Sudah Anonim & Jam Benar)
-st.caption(f"Real-Time Hunter via Google News Feed | Update: {jam_update} WIB")
-
-if st.button("🔥 BURU BERITA SEKARANG (REFRESH)"):
+if st.button("🔥 FORCE RE-SCAN MARKET (BERSIHKAN CACHE)"):
+    st.cache_data.clear()
     st.rerun()
 
-# --- DAFTAR TARGET BURUAN ---
+# Kategori target aksi korporasi
 targets = {
-    "💰 RIGHTS ISSUE & PRIVATE PLACEMENT": "Saham Rights Issue OR Private Placement Indonesia",
-    "🤝 AKUISISI & MERGER": "Saham Akuisisi OR Merger Emiten Indonesia",
-    "🚨 TENDER OFFER": "Saham Tender Offer Wajib",
-    "🏛️ DANANTARA & BUMN": "Danantara BUMN Saham",
-    "⚠️ SUSPENSI & UMA (OJK)": "Saham Suspensi BEI OR UMA",
-    "🏗️ KONTRAK & PROYEK JUMBO": "Emiten Kontrak Baru OR Menang Tender"
+    "💰 RIGHTS ISSUE & PP": "rights issue OR hmetd OR private placement saham",
+    "🤝 AKUISISI & MERGER": "akuisisi saham baru OR merger emiten OR pengendali baru",
+    "🚨 TENDER OFFER": "tender offer wajib OR penawaran tender saham",
+    "🏛️ RUPSLB & DIVIDEN": "hasil RUPSLB emiten OR jadwal dividen saham"
 }
 
-# --- EKSEKUSI ---
 col1, col2 = st.columns(2)
-columns = [col1, col2]
+cols = [col1, col2]
 
 for i, (label, query) in enumerate(targets.items()):
-    with columns[i % 2]: 
+    with cols[i % 2]:
         st.markdown(f"<div class='topic-header'>{label}</div>", unsafe_allow_html=True)
+        news_data = hunt_realtime(query)
         
-        with st.spinner(f"Memburu {label}..."):
-            results = hunt_specific_topic(query)
-        
-        if results:
-            for news in results:
+        if news_data:
+            for n in news_data:
+                # Format jam tayang berita
+                news_time = n['dt'] + timedelta(hours=7)
+                time_display = news_time.strftime("%d/%m %H:%M")
+                
+                # Tag NEW jika berita kurang dari 4 jam lalu
+                is_new = (datetime.utcnow() - n['dt']).total_seconds() < 14400
+                badge = "<span class='badge-new'>NEW</span> " if is_new else ""
+                
                 st.markdown(f"""
-                <div class="news-item">
-                    <a href="{news['link']}" target="_blank" class="news-title">{news['title']}</a>
-                    <div class="news-meta">
-                        <span class="source-badge">{news['source']}</span>
-                        {news['date']}
+                    <div class="news-card">
+                        <a href="{n['link']}" target="_blank" class="news-title">{n['title']}</a>
+                        <div class="news-meta">
+                            {badge}<span class="badge-source">{n['source']}</span> {time_display} WIB
+                        </div>
                     </div>
-                </div>
                 """, unsafe_allow_html=True)
         else:
-            st.markdown("<span style='color:#555; font-size:12px;'>Zonk. Belum ada berita baru minggu ini.</span>", unsafe_allow_html=True)
+            st.write("Sinyal belum terdeteksi dalam 24 jam terakhir.")
