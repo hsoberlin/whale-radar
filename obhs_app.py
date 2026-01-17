@@ -1,204 +1,228 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import yfinance as yf
+import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
-import re
-import difflib
 
 # ==========================================
-# 1. VISUAL SETUP (HIGH CONTRAST MODE)
+# 1. KONFIGURASI VISUAL (RUPS EDITION)
 # ==========================================
-st.set_page_config(page_title="CA X-RAY V38", layout="wide", page_icon="👁️")
+st.set_page_config(page_title="QUANTUM TITAN V41 (RUPS)", layout="wide", page_icon="🗳️")
 
 st.markdown("""
 <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    .stApp { background-color: #000000; color: #E0E0E0; font-family: 'Consolas', monospace; }
     
-    /* BACKGROUND HITAM PEKAT, TEKS PUTIH TERANG */
-    .stApp { background-color: #000000; color: #FFFFFF; font-family: 'Verdana', sans-serif; }
-    
-    /* JUDUL KATEGORI - HIJAU NEON */
-    .topic-header {
-        border-bottom: 3px solid #00FF00;
-        padding-bottom: 5px;
-        margin-top: 35px;
-        margin-bottom: 15px;
-        font-size: 22px;
-        font-weight: 900;
-        color: #00FF00;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        text-shadow: 0px 0px 10px rgba(0, 255, 0, 0.4);
+    /* JUDUL */
+    .titan-title { 
+        color: #00FFFF; /* Cyan Neon */
+        font-size: 32px; 
+        font-weight: 900; 
+        text-align: center; 
+        margin-bottom: 20px; 
+        border-bottom: 3px solid #00FFFF;
+        text-shadow: 0 0 15px rgba(0, 255, 255, 0.6);
     }
     
-    /* KOTAK BERITA */
-    .news-card {
-        background-color: #121212; /* Abu Sangat Gelap */
-        border: 1px solid #444;
-        border-radius: 0px; /* Kotak Tegas */
-        padding: 15px;
-        margin-bottom: 15px;
+    /* CARD */
+    .signal-card { 
+        background-color: #0A0A0A; 
+        border: 1px solid #333; 
+        padding: 12px; 
+        border-radius: 6px; 
+        margin-bottom: 10px; 
+        transition: transform 0.1s;
     }
-    .news-card:hover { border: 1px solid #FFFFFF; background-color: #1A1A1A; }
+    .signal-card:hover { border-color: #00FF41; background-color: #111; transform: scale(1.01); }
     
-    /* JUDUL BERITA - PUTIH MUTLAK */
-    .news-link {
-        color: #FFFFFF !important; 
-        font-size: 18px; 
-        font-weight: 800; /* Extra Bold */
-        text-decoration: none;
-        display: block;
-        margin-bottom: 5px;
-        line-height: 1.3;
-    }
-    .news-link:hover { color: #FFFF00 !important; text-decoration: underline; }
+    .ticker-head { font-size: 22px; font-weight: bold; color: #00FF41; }
+    .price-tag { font-size: 18px; color: #FFF; float: right; font-weight:bold; }
     
-    /* META DATA (TANGGAL) - HIJAU TERANG */
-    .meta-row { display: flex; align-items: center; margin-bottom: 8px; }
-    .meta-date { color: #00FF00; font-size: 12px; font-weight: bold; font-family: monospace; }
-    .src-badge { 
-        background-color: #FFFFFF; color: #000000; 
-        font-size: 11px; font-weight: bold; padding: 1px 6px; 
-        margin-left: 10px; border-radius: 2px;
-    }
+    /* BADGES */
+    .badge-sq { background-color: #FF00FF; color: white; padding: 2px 8px; font-size: 11px; font-weight:bold; border-radius:4px; }
+    .badge-bo { background-color: #00FF41; color: black; padding: 2px 8px; font-size: 11px; font-weight:bold; border-radius:4px; }
     
-    /* SNIPPET / ISI BERITA - ABU TERANG BIAR KONTRAS */
-    .news-snippet {
-        font-size: 14px;
-        color: #DDDDDD; /* Hampir Putih */
-        line-height: 1.5;
-        border-left: 4px solid #00FF00; /* Garis Hijau di Kiri */
-        padding-left: 10px;
-        background-color: #000000;
-        padding: 8px;
-    }
-    
-    /* HIGHLIGHTS YANG MENYALA */
-    .money { color: #FFFF00; font-weight: 900; border-bottom: 1px dotted #FFFF00; } /* KUNING NYALA */
-    .ticker { background-color: #00FFFF; color: #000000; padding: 0 4px; font-weight: 900; } /* CYAN NYALA */
-    .action { color: #FF00FF; font-weight: bold; text-decoration: underline; } /* MAGENTA NYALA */
-
+    .details { font-size: 12px; color: #AAA; margin-top: 5px; }
+    .highlight { color: #FFFF00; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. LOGIC: X-RAY SCANNER (SAMA SEPERTI V37)
+# 2. WATCHLIST RAKSASA + RUPS LIST
 # ==========================================
 
-NOISE = ["sinopsis", "film", "zodiak", "cara", "tips", "resep", "trik", "panduan", "jadwal bioskop", "review"]
+# --- GENG BARU: MINTA RESTU (RUPSLB/AKSI KORPORASI) ---
+# Saham-saham ini sering minta persetujuan untuk Merger, RI, atau Restrukturisasi
+G_RUPS_ACTION = "FREN, EXCL, NOBU, BABP, WIKA, PTPP, WSKT, GIAA, GMFI, KAEF, BUMI, ADRO, ITMG, JSMR, TPI"
 
-def highlight_content(text):
-    # Highlight Uang (Kuning Emas)
-    text = re.sub(r"(Rp\s?[\d\.,]+\s?[TM]riliun|Rp\s?[\d\.,]+\s?Miliar|US\$\s?[\d\.,]+)", r"<span class='money'>\1</span>", text, flags=re.IGNORECASE)
-    # Highlight Ticker (Cyan Background)
-    text = re.sub(r"\b([A-Z]{4})\b", r"<span class='ticker'>\1</span>", text)
-    # Highlight Aksi (Magenta)
-    actions = ["akuisisi", "merger", "rights issue", "private placement", "tender offer", "rups", "dividen"]
-    for act in actions:
-        text = re.sub(f"({act})", r"<span class='action'>\1</span>", text, flags=re.IGNORECASE)
-    return text
+# --- GENG LAMA (KONGLOMERAT) ---
+G_DANANTARA = "BBRI, BMRI, BBNI, BBTN, TLKM, PGEO, ANTM, TINS, PTBA, INCO, SMGR, JSMR"
+G_PRAJOGO = "BREN, TPIA, BRPT, CUAN, PTRO"
+G_ISAM_HASHIM = "JARR, PTON, PSAB, DKFT, PMMP"
+G_BAKRIE = "BUMI, BRMS, ENRG, DEWA, BNBR, UNSP, VIVA"
+G_SALIM = "AMMN, INDF, ICBP, LSIP, SIMP, META, DNET"
+G_SINARMAS = "INKP, TKIM, BSDE, DMAS, FREN, SMAR"
+G_ASTRA = "ASII, UNTR, AALI, AUTO"
+G_TRIPUTRA = "TAPG, DSNG, DRMA, ASSA, ADRO"
+G_TANOKO = "CLEO, AVIA, PEVE"
+G_DJARUM = "BBCA, TOWR, BELI"
+G_LIPPO = "LPKR, LPPF, MLPL, MPPA, SILO"
+G_MNC = "KPIG, BHIT, MNCN, IPTV"
+G_PANIN = "PNLF, PNBN, PNIN, PANS"
+G_VIRAL = "GOTO, ARTO, BUKA, EMTK, DADA, RMKE, FAST, MUTU, CBRE, IMPC"
 
-def extract_snippet(html_content):
-    soup = BeautifulSoup(html_content, "html.parser")
-    text = soup.get_text()
-    text = text.replace("Baca selengkapnya...", "").replace("Google Berita", "")
-    return text[:280] + "..." 
+# Gabungkan Semua (Ada duplikasi gpp, nanti mesin otomatis handle)
+FULL_TITAN_LIST = f"{G_RUPS_ACTION}, {G_DANANTARA}, {G_PRAJOGO}, {G_ISAM_HASHIM}, {G_BAKRIE}, {G_SALIM}, {G_SINARMAS}, {G_ASTRA}, {G_TRIPUTRA}, {G_TANOKO}, {G_DJARUM}, {G_LIPPO}, {G_MNC}, {G_PANIN}, {G_VIRAL}"
 
-def hunt_xray(keywords):
-    SITES = "site:cnbcindonesia.com OR site:kontan.co.id OR site:idxchannel.com OR site:katadata.co.id"
-    full_query = f"({SITES}) AND ({keywords}) when:14d"
-    
-    url = f"https://news.google.com/rss/search?q={full_query.replace(' ', '+')}&hl=id-ID&gl=ID&ceid=ID:id"
-    
+# ==========================================
+# 3. ENGINE (QUANTUM LOGIC)
+# ==========================================
+def scan_stock(ticker):
     try:
-        r = requests.get(url, timeout=15)
-        soup = BeautifulSoup(r.content, features="xml")
-        items = soup.find_all('item')
+        # Tarik Data
+        df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+        if len(df) < 50: return None
         
-        valid_news = []
-        seen_titles = []
-        cutoff = datetime.utcnow() - timedelta(days=14)
+        # --- INDIKATOR ---
+        # 1. Trend
+        df['EMA50'] = df['Close'].ewm(span=50, adjust=False).mean()
         
-        for item in items:
-            title = item.title.text
-            raw_desc = item.description.text if item.description else ""
-            clean_desc = extract_snippet(raw_desc)
+        # 2. RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        # 3. BB Squeeze
+        df['MA20'] = df['Close'].rolling(20).mean()
+        df['STD'] = df['Close'].rolling(20).std()
+        df['Upper'] = df['MA20'] + (df['STD'] * 2)
+        df['Lower'] = df['MA20'] - (df['STD'] * 2)
+        df['Width'] = ((df['Upper'] - df['Lower']) / df['MA20']) * 100
+        
+        # 4. Volume
+        df['VolMA'] = df['Volume'].rolling(20).mean()
+        df['VolRatio'] = df['Volume'] / df['VolMA']
+        
+        last = df.iloc[-1]
+        
+        # --- LOGIC ---
+        trend_ok = last['Close'] > last['EMA50']
+        rsi_ok = (last['RSI'] > 45) and (last['RSI'] < 80)
+        
+        status = ""
+        
+        # TIPE 1: SQUEEZE (AKUMULASI/NGETEM)
+        if trend_ok and rsi_ok and last['Width'] < 15:
+            status = "SQUEEZE"
             
-            # FILTER DATE
-            try:
-                dt = datetime.strptime(item.pubDate.text, "%a, %d %b %Y %H:%M:%S %Z")
-            except: continue
-            if dt < cutoff: continue
+        # TIPE 2: BREAKOUT (MELEDAK)
+        elif trend_ok and last['RSI'] > 50 and last['VolRatio'] > 1.3:
+            status = "BREAKOUT"
             
-            # FILTER NOISE
-            if any(n in title.lower() for n in NOISE): continue
-
-            # DEDUPLIKASI
-            if any(difflib.SequenceMatcher(None, title, s).ratio() > 0.7 for s in seen_titles): continue
-            seen_titles.append(title)
-            
-            # FORMAT SOURCE
-            src = item.source.text if item.source else "MEDIA"
-            src = src.replace(".id","").replace(".com","").upper()
-            
-            valid_news.append({
-                "title": title,
-                "snippet": clean_desc,
-                "link": item.link.text,
-                "dt": dt,
-                "src": src
-            })
-            
-        return sorted(valid_news, key=lambda x: x['dt'], reverse=True)
+        if status:
+            change_pct = ((last['Close'] - last['Open']) / last['Open']) * 100
+            return {
+                "Ticker": ticker.replace(".JK", ""),
+                "Price": int(last['Close']),
+                "Change": round(change_pct, 2),
+                "RSI": round(last['RSI'], 1),
+                "Vol": round(last['VolRatio'], 1),
+                "Width": round(last['Width'], 1),
+                "Status": status
+            }
+        return None
+        
     except:
-        return []
+        return None
 
 # ==========================================
-# 3. DASHBOARD EXECUTION
+# 4. DASHBOARD UI
 # ==========================================
-st.title("👁️ CA X-RAY V38 (HIGH CONTRAST)")
-wib = datetime.utcnow() + timedelta(hours=7)
-start_date = wib - timedelta(days=14)
-st.caption(f"UPDATE: {wib.strftime('%H:%M')} WIB | RANGE: {start_date.strftime('%d %b')} - {wib.strftime('%d %b')}")
+st.markdown("<div class='titan-title'>🗳️ QUANTUM TITAN V41 (RUPS)</div>", unsafe_allow_html=True)
+st.caption("SCANNING: SAHAM KONGLO + SAHAM 'MINTA RESTU' (RUPSLB/MERGER/RI)")
 
-if st.button("🔄 SCAN ULANG (REFRESH)"):
-    st.cache_data.clear()
-    st.rerun()
+with st.expander("📝 EDIT WATCHLIST", expanded=False):
+    tickers_input = st.text_area("DAFTAR SAHAM:", FULL_TITAN_LIST, height=200)
 
-topics = {
-    "🤝 MERGER & AKUISISI": "akuisisi OR merger OR caplok OR ambil alih OR pengendali baru",
-    "💰 RIGHTS ISSUE & MODAL": "rights issue OR hmetd OR private placement OR setoran modal",
-    "🚨 TENDER OFFER & GO PRIVATE": "tender offer OR go private OR delisting OR penawaran tender",
-    "🗣️ MEMINTA PERSETUJUAN (RUPS)": "rupslb OR rapat umum pemegang saham OR minta restu OR agenda rups"
-}
-
-for label, query in topics.items():
-    st.markdown(f"<div class='topic-header'>{label}</div>", unsafe_allow_html=True)
+if st.button("🚀 SCAN MARKET SEKARANG", type="primary"):
+    # Bersihkan input (Remove duplicate)
+    raw_list = tickers_input.replace("\n", "").split(",")
+    # Set() untuk membuang saham dobel (misal BUMI ada di Bakrie & RUPS)
+    stock_list = list(set([t.strip().upper() + ".JK" for t in raw_list if t.strip()]))
     
-    with st.spinner(f"Scanning {label}..."):
-        news_list = hunt_xray(query)
+    st.write(f"🔍 Membedah {len(stock_list)} saham potensial...")
     
-    if news_list:
-        for news in news_list:
-            local_time = news['dt'] + timedelta(hours=7)
-            date_str = local_time.strftime("%d/%m %H:%M")
-            
-            fmt_title = highlight_content(news['title'])
-            fmt_snippet = highlight_content(news['snippet'])
-            
-            st.markdown(f"""
-            <div class='news-card'>
-                <div class='meta-row'>
-                    <span class='meta-date'>{date_str} WIB</span>
-                    <span class='src-badge'>{news['src']}</span>
-                </div>
-                <a href='{news['link']}' target='_blank' class='news-link'>{fmt_title}</a>
-                <div class='news-snippet'>{fmt_snippet}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    bar = st.progress(0)
+    results = []
+    
+    for i, stock in enumerate(stock_list):
+        data = scan_stock(stock)
+        if data: results.append(data)
+        bar.progress((i + 1) / len(stock_list))
+        
+    bar.empty()
+    
+    if results:
+        sq_list = [r for r in results if r['Status'] == "SQUEEZE"]
+        bo_list = [r for r in results if r['Status'] == "BREAKOUT"]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"### ⚛️ SQUEEZE ({len(sq_list)})")
+            st.caption("Fase Ngetem/Sideways. Menunggu Hasil RUPS/Pengumuman.")
+            if sq_list:
+                sq_list = sorted(sq_list, key=lambda x: x['Width'])
+                for r in sq_list:
+                    color = "#00FF41" if r['Change'] >= 0 else "#FF0000"
+                    st.markdown(f"""
+                    <div class='signal-card'>
+                        <div style='display:flex; justify-content:space-between;'>
+                            <span class='ticker-head'>{r['Ticker']}</span>
+                            <span class='badge-sq'>SQUEEZE</span>
+                        </div>
+                        <div style='display:flex; justify-content:space-between; align-items:flex-end;'>
+                            <div class='details'>
+                                BB Width: <span class='highlight'>{r['Width']}%</span><br>
+                                RSI: {r['RSI']}
+                            </div>
+                            <div style='text-align:right;'>
+                                <span class='price-tag'>Rp {r['Price']}</span><br>
+                                <small style='color:{color}'>{r['Change']}%</small>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else: st.info("Tidak ada saham Squeeze.")
+                
+        with col2:
+            st.markdown(f"### 🚀 BREAKOUT ({len(bo_list)})")
+            st.caption("Volume Masuk. Pasar Merespon Berita.")
+            if bo_list:
+                bo_list = sorted(bo_list, key=lambda x: x['Vol'], reverse=True)
+                for r in bo_list:
+                    color = "#00FF41" if r['Change'] >= 0 else "#FF0000"
+                    st.markdown(f"""
+                    <div class='signal-card'>
+                        <div style='display:flex; justify-content:space-between;'>
+                            <span class='ticker-head'>{r['Ticker']}</span>
+                            <span class='badge-bo'>BREAKOUT</span>
+                        </div>
+                        <div style='display:flex; justify-content:space-between; align-items:flex-end;'>
+                            <div class='details'>
+                                Volume: <span class='highlight'>{r['Vol']}x</span> Avg<br>
+                                RSI: {r['RSI']}
+                            </div>
+                            <div style='text-align:right;'>
+                                <span class='price-tag'>Rp {r['Price']}</span><br>
+                                <small style='color:{color}'>{r['Change']}%</small>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else: st.info("Tidak ada saham Terbang.")
+                
     else:
-        st.info("Tidak ada data baru.")
-
-st.markdown("<br><br>", unsafe_allow_html=True)
+        st.warning("Pasar sepi, Bos. Tidak ada sinyal valid.")
