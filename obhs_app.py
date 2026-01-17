@@ -6,101 +6,105 @@ import re
 import difflib
 
 # ==========================================
-# 1. VISUAL SETUP (DARK MODE + SNIPPET)
+# 1. VISUAL SETUP (HIGH CONTRAST MODE)
 # ==========================================
-st.set_page_config(page_title="CA X-RAY V37", layout="wide", page_icon="🧬")
+st.set_page_config(page_title="CA X-RAY V38", layout="wide", page_icon="👁️")
 
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    .stApp { background-color: #0E1117; color: #E6E6E6; font-family: 'Consolas', monospace; }
     
-    /* JUDUL KATEGORI */
+    /* BACKGROUND HITAM PEKAT, TEKS PUTIH TERANG */
+    .stApp { background-color: #000000; color: #FFFFFF; font-family: 'Verdana', sans-serif; }
+    
+    /* JUDUL KATEGORI - HIJAU NEON */
     .topic-header {
-        border-bottom: 2px solid #00FF41;
+        border-bottom: 3px solid #00FF00;
         padding-bottom: 5px;
-        margin-top: 30px;
+        margin-top: 35px;
         margin-bottom: 15px;
-        font-size: 18px;
-        font-weight: bold;
-        color: #00FF41;
+        font-size: 22px;
+        font-weight: 900;
+        color: #00FF00;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
+        text-shadow: 0px 0px 10px rgba(0, 255, 0, 0.4);
     }
     
-    /* KARTU BERITA */
+    /* KOTAK BERITA */
     .news-card {
-        background-color: #161B22;
-        border: 1px solid #30363D;
-        border-radius: 6px;
-        padding: 10px;
-        margin-bottom: 10px;
-        transition: transform 0.1s;
+        background-color: #121212; /* Abu Sangat Gelap */
+        border: 1px solid #444;
+        border-radius: 0px; /* Kotak Tegas */
+        padding: 15px;
+        margin-bottom: 15px;
     }
-    .news-card:hover { border-color: #58A6FF; }
+    .news-card:hover { border: 1px solid #FFFFFF; background-color: #1A1A1A; }
     
-    .news-top-row { display: flex; align-items: flex-start; justify-content: space-between; }
-    
-    /* JUDUL BERITA */
+    /* JUDUL BERITA - PUTIH MUTLAK */
     .news-link {
-        color: #58A6FF; font-size: 15px; font-weight: bold; text-decoration: none;
+        color: #FFFFFF !important; 
+        font-size: 18px; 
+        font-weight: 800; /* Extra Bold */
+        text-decoration: none;
+        display: block;
+        margin-bottom: 5px;
+        line-height: 1.3;
     }
-    .news-link:hover { text-decoration: underline; color: #79C0FF; }
+    .news-link:hover { color: #FFFF00 !important; text-decoration: underline; }
     
-    /* TANGGAL & SUMBER */
-    .meta-tag { font-size: 11px; color: #8B949E; margin-right: 10px; }
+    /* META DATA (TANGGAL) - HIJAU TERANG */
+    .meta-row { display: flex; align-items: center; margin-bottom: 8px; }
+    .meta-date { color: #00FF00; font-size: 12px; font-weight: bold; font-family: monospace; }
     .src-badge { 
-        font-size: 10px; background-color: #21262D; color: #C9D1D9; 
-        padding: 2px 6px; border-radius: 4px; border: 1px solid #30363D; 
+        background-color: #FFFFFF; color: #000000; 
+        font-size: 11px; font-weight: bold; padding: 1px 6px; 
+        margin-left: 10px; border-radius: 2px;
     }
     
-    /* SNIPPET / ISI BERITA (ABU-ABU) */
+    /* SNIPPET / ISI BERITA - ABU TERANG BIAR KONTRAS */
     .news-snippet {
-        font-size: 13px;
-        color: #C9D1D9;
-        margin-top: 8px;
-        line-height: 1.4;
-        border-left: 3px solid #30363D;
-        padding-left: 8px;
+        font-size: 14px;
+        color: #DDDDDD; /* Hampir Putih */
+        line-height: 1.5;
+        border-left: 4px solid #00FF00; /* Garis Hijau di Kiri */
+        padding-left: 10px;
+        background-color: #000000;
+        padding: 8px;
     }
     
-    /* HIGHLIGHTS */
-    .money { color: #D2A8FF; font-weight: bold; } /* Ungu untuk Uang */
-    .ticker { background-color: #0969DA; color: white; padding: 0 4px; border-radius: 3px; font-weight: bold; font-size: 12px; } /* Biru untuk Saham */
-    .action { color: #00FF41; font-weight: bold; border-bottom: 1px dashed #00FF41; } /* Hijau untuk Aksi */
+    /* HIGHLIGHTS YANG MENYALA */
+    .money { color: #FFFF00; font-weight: 900; border-bottom: 1px dotted #FFFF00; } /* KUNING NYALA */
+    .ticker { background-color: #00FFFF; color: #000000; padding: 0 4px; font-weight: 900; } /* CYAN NYALA */
+    .action { color: #FF00FF; font-weight: bold; text-decoration: underline; } /* MAGENTA NYALA */
 
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. LOGIC: X-RAY SCANNER (TITLE + BODY)
+# 2. LOGIC: X-RAY SCANNER (SAMA SEPERTI V37)
 # ==========================================
 
-# Keyword Sampah (Tetap aktif biar bersih)
 NOISE = ["sinopsis", "film", "zodiak", "cara", "tips", "resep", "trik", "panduan", "jadwal bioskop", "review"]
 
 def highlight_content(text):
-    # 1. Highlight UANG
+    # Highlight Uang (Kuning Emas)
     text = re.sub(r"(Rp\s?[\d\.,]+\s?[TM]riliun|Rp\s?[\d\.,]+\s?Miliar|US\$\s?[\d\.,]+)", r"<span class='money'>\1</span>", text, flags=re.IGNORECASE)
-    # 2. Highlight TICKER (Kode Saham 4 Huruf Kapital)
-    # Regex ini mencari huruf kapital 4 digit yg berdiri sendiri (misal: BBCA, bukan KATA)
-    # Kita filter manual nanti biar gak nge-highlight kata umum
+    # Highlight Ticker (Cyan Background)
     text = re.sub(r"\b([A-Z]{4})\b", r"<span class='ticker'>\1</span>", text)
-    # 3. Highlight AKSI (Akuisisi, dll)
+    # Highlight Aksi (Magenta)
     actions = ["akuisisi", "merger", "rights issue", "private placement", "tender offer", "rups", "dividen"]
     for act in actions:
         text = re.sub(f"({act})", r"<span class='action'>\1</span>", text, flags=re.IGNORECASE)
     return text
 
 def extract_snippet(html_content):
-    # Google News deskripsinya format HTML, kita bersihkan tag-nya
     soup = BeautifulSoup(html_content, "html.parser")
     text = soup.get_text()
-    # Kadang ada teks aneh "Baca selengkapnya...", kita buang
     text = text.replace("Baca selengkapnya...", "").replace("Google Berita", "")
-    return text[:250] + "..." # Ambil 250 karakter aja
+    return text[:280] + "..." 
 
 def hunt_xray(keywords):
     SITES = "site:cnbcindonesia.com OR site:kontan.co.id OR site:idxchannel.com OR site:katadata.co.id"
@@ -122,32 +126,26 @@ def hunt_xray(keywords):
             raw_desc = item.description.text if item.description else ""
             clean_desc = extract_snippet(raw_desc)
             
-            # --- FILTER ---
-            
-            # 1. TANGGAL
+            # FILTER DATE
             try:
                 dt = datetime.strptime(item.pubDate.text, "%a, %d %b %Y %H:%M:%S %Z")
             except: continue
             if dt < cutoff: continue
             
-            # 2. NOISE
+            # FILTER NOISE
             if any(n in title.lower() for n in NOISE): continue
 
-            # 3. GABUNGAN SCAN (JUDUL + ISI)
-            # Kita scan Ticker di Judul ATAU di Isi
-            full_text_scan = title + " " + clean_desc
-            
-            # Cek Deduplikasi
+            # DEDUPLIKASI
             if any(difflib.SequenceMatcher(None, title, s).ratio() > 0.7 for s in seen_titles): continue
             seen_titles.append(title)
             
-            # Format Source
-            src = item.source.text if item.source else "Media"
+            # FORMAT SOURCE
+            src = item.source.text if item.source else "MEDIA"
             src = src.replace(".id","").replace(".com","").upper()
             
             valid_news.append({
                 "title": title,
-                "snippet": clean_desc, # Kita simpan snippetnya
+                "snippet": clean_desc,
                 "link": item.link.text,
                 "dt": dt,
                 "src": src
@@ -160,12 +158,12 @@ def hunt_xray(keywords):
 # ==========================================
 # 3. DASHBOARD EXECUTION
 # ==========================================
-st.title("🧬 CA X-RAY V37 (BODY SCANNER)")
+st.title("👁️ CA X-RAY V38 (HIGH CONTRAST)")
 wib = datetime.utcnow() + timedelta(hours=7)
 start_date = wib - timedelta(days=14)
-st.caption(f"SCANNING: TITLE + BODY TEXT | 14 DAYS FEED | UPDATE: {wib.strftime('%H:%M')} WIB")
+st.caption(f"UPDATE: {wib.strftime('%H:%M')} WIB | RANGE: {start_date.strftime('%d %b')} - {wib.strftime('%d %b')}")
 
-if st.button("🔥 SCAN DEEP (REFRESH)"):
+if st.button("🔄 SCAN ULANG (REFRESH)"):
     st.cache_data.clear()
     st.rerun()
 
@@ -173,13 +171,13 @@ topics = {
     "🤝 MERGER & AKUISISI": "akuisisi OR merger OR caplok OR ambil alih OR pengendali baru",
     "💰 RIGHTS ISSUE & MODAL": "rights issue OR hmetd OR private placement OR setoran modal",
     "🚨 TENDER OFFER & GO PRIVATE": "tender offer OR go private OR delisting OR penawaran tender",
-    "🗣️ MEMINTA PERSETUJUAN (RUPS/RESTU)": "rupslb OR rapat umum pemegang saham OR minta restu OR agenda rups"
+    "🗣️ MEMINTA PERSETUJUAN (RUPS)": "rupslb OR rapat umum pemegang saham OR minta restu OR agenda rups"
 }
 
 for label, query in topics.items():
     st.markdown(f"<div class='topic-header'>{label}</div>", unsafe_allow_html=True)
     
-    with st.spinner(f"X-Ray Scanning {label}..."):
+    with st.spinner(f"Scanning {label}..."):
         news_list = hunt_xray(query)
     
     if news_list:
@@ -187,23 +185,20 @@ for label, query in topics.items():
             local_time = news['dt'] + timedelta(hours=7)
             date_str = local_time.strftime("%d/%m %H:%M")
             
-            # Format Title & Snippet (Kasih warna)
             fmt_title = highlight_content(news['title'])
             fmt_snippet = highlight_content(news['snippet'])
             
             st.markdown(f"""
             <div class='news-card'>
-                <div class='news-top-row'>
-                    <div>
-                        <span class='meta-tag'>{date_str}</span>
-                        <a href='{news['link']}' target='_blank' class='news-link'>{fmt_title}</a>
-                    </div>
+                <div class='meta-row'>
+                    <span class='meta-date'>{date_str} WIB</span>
                     <span class='src-badge'>{news['src']}</span>
                 </div>
+                <a href='{news['link']}' target='_blank' class='news-link'>{fmt_title}</a>
                 <div class='news-snippet'>{fmt_snippet}</div>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("Tidak ada data ditemukan.")
+        st.info("Tidak ada data baru.")
 
 st.markdown("<br><br>", unsafe_allow_html=True)
