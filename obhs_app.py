@@ -30,12 +30,22 @@ st.markdown("""
         text-align: center; margin-bottom: 20px;
     }
     
+    /* PERBAIKAN 1: FONT SIZE RESPONSIF (HP vs DESKTOP) */
     .header-title {
         font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 50px !important;
+        font-weight: 900; 
+        font-size: 50px !important; /* Default Desktop */
         background: linear-gradient(90deg, #00ffcc, #ff0055);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         letter-spacing: 8px;
+    }
+    
+    /* Jika layar kecil (HP), font mengecil drastis agar muat satu baris */
+    @media only screen and (max-width: 600px) {
+        .header-title {
+            font-size: 20px !important;
+            letter-spacing: 2px !important;
+        }
     }
     
     .status-bar {
@@ -63,9 +73,10 @@ st.markdown("""
     .news-topic-header {
         font-family: 'Orbitron', sans-serif; font-weight: 800;
         font-size: 11px; color: #00ffcc !important; text-transform: uppercase;
+        display: flex; justify-content: space-between; /* Agar Tanggal di kanan */
     }
     
-    .news-text { font-family: 'Inter', sans-serif; font-size: 12px; color: #e0e0e0; }
+    .news-text { font-family: 'Inter', sans-serif; font-size: 12px; color: #e0e0e0; margin-top: 4px; }
     .news-text a { text-decoration: none; color: inherit; }
     
     .thesis-box {
@@ -153,11 +164,24 @@ def fetch_intel():
                 title = entry.title.replace('<b>','').replace('</b>','').strip()
                 tickers = re.findall(r'\b[A-Z]{4}\b', title.upper())
                 topic = next((v for k, v in topic_map.items() if k in title.upper()), "STRATEGIS")
+                
+                # PERBAIKAN 3: AMBIL TANGGAL BERITA & UBAH KE WIB
+                date_str = ""
+                try:
+                    if hasattr(entry, 'published_parsed'):
+                        # Convert struct_time to datetime (UTC assumption from Feed)
+                        dt_utc = datetime(*entry.published_parsed[:6])
+                        # Add 7 Hours for WIB
+                        dt_wib = dt_utc + timedelta(hours=7)
+                        date_str = dt_wib.strftime("%d/%m %H:%M")
+                except:
+                    date_str = ""
+
                 for t in set(tickers):
                     if t not in ["IHSG", "IDX", "LQ45"]:
                         intel_map[t] = {"title": title, "topic": topic}
                         news_tickers.add(t)
-                intel_list.append({"TOPIC": topic, "NEWS": title})
+                intel_list.append({"TOPIC": topic, "NEWS": title, "DATE": date_str})
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
@@ -218,7 +242,10 @@ def scan_market():
 
 # --- INTERFACE RENDERING ---
 st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM DAILY TRADE</div></div>', unsafe_allow_html=True)
-st.markdown(f'<div class="status-bar">● GATEKEEPER ACTIVE | {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
+
+# PERBAIKAN 2: JAM WIB (UTC + 7 JAM)
+wib_time = (datetime.utcnow() + timedelta(hours=7)).strftime("%H:%M:%S")
+st.markdown(f'<div class="status-bar">● GATEKEEPER ACTIVE | {wib_time} WIB</div>', unsafe_allow_html=True)
 
 loading_placeholder = st.empty()
 loading_placeholder.markdown('<div class="blink">SYSTEM SCANNING: ANALYZING INSTITUTIONAL ORDER FLOW...</div>', unsafe_allow_html=True)
@@ -233,7 +260,6 @@ if data:
     
     with col_main:
         st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📡 REAL-TIME WHALE TRACKER</h3>", unsafe_allow_html=True)
-        # FIX: Ganti use_container_width=True menjadi width='stretch'
         st.dataframe(df[["SYMBOL", "CONF", "VOL_POWER", "FLOW_VELOCITY", "PRICE", "CHG%", "VALUE", "PORTO"]], column_config={
             "CONF": st.column_config.ProgressColumn("CONF", min_value=0, max_value=100, format="%d%%"),
             "VOL_POWER": st.column_config.NumberColumn("VOL PWR", format="%.2fx ⚡"),
@@ -286,6 +312,13 @@ if data:
         st.markdown("<h3 style='font-family:Orbitron; color:#ffffff; font-size:18px;'>💡 STRATEGIC INTEL</h3>", unsafe_allow_html=True)
         for item in news_feed[:12]:
             q = urllib.parse.quote(item['NEWS'])
-            st.markdown(f'''<div class="news-box"><div class="news-topic-header">{item["TOPIC"]}</div><div class="news-text"><a href="https://www.google.com/search?q={q}" target="_blank">{item["NEWS"]}</a></div></div>''', unsafe_allow_html=True)
+            # PERBAIKAN TAMPILAN BERITA: ADA TANGGAL
+            st.markdown(f'''<div class="news-box">
+                <div class="news-topic-header">
+                    <span>{item["TOPIC"]}</span>
+                    <span style="color: #888;">{item["DATE"]}</span>
+                </div>
+                <div class="news-text"><a href="https://www.google.com/search?q={q}" target="_blank">{item["NEWS"]}</a></div>
+            </div>''', unsafe_allow_html=True)
 
 st.caption("PREDATOR QUANTUM DAILY TRADE | INSTITUTIONAL GATEKEEPER | 2026 WALL STREET STANDARD")
