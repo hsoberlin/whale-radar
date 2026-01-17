@@ -233,13 +233,14 @@ if data:
     
     with col_main:
         st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📡 REAL-TIME WHALE TRACKER</h3>", unsafe_allow_html=True)
+        # FIX: Ganti use_container_width=True menjadi width='stretch'
         st.dataframe(df[["SYMBOL", "CONF", "VOL_POWER", "FLOW_VELOCITY", "PRICE", "CHG%", "VALUE", "PORTO"]], column_config={
             "CONF": st.column_config.ProgressColumn("CONF", min_value=0, max_value=100, format="%d%%"),
             "VOL_POWER": st.column_config.NumberColumn("VOL PWR", format="%.2fx ⚡"),
             "FLOW_VELOCITY": st.column_config.NumberColumn("FLOW VELOCITY", format="%.2fx"),
             "VALUE": st.column_config.NumberColumn("VAL (B)", format="%.1fB"),
             "PORTO": st.column_config.TextColumn("ALLOC")
-        }, use_container_width=True, hide_index=True, height=400)
+        }, width='stretch', hide_index=True, height=400)
 
         st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px; margin-top:30px;'>📝 STRATEGIC INVESTMENT ANALYSIS</h3>", unsafe_allow_html=True)
         agg_list = []
