@@ -6,9 +6,9 @@ import re
 import difflib
 
 # ==========================================
-# 1. VISUAL BLACK THEME (SAMA SEPERTI TADI)
+# 1. VISUAL TERMINAL (TETAP SAMA)
 # ==========================================
-st.set_page_config(page_title="CA SNIPER V34 (CLEAN)", layout="wide", page_icon="☠️")
+st.set_page_config(page_title="CA SNIPER V35 (STRICT DATE)", layout="wide", page_icon="📆")
 
 st.markdown("""
 <style>
@@ -25,88 +25,66 @@ st.markdown("""
     .news-row { border-bottom: 1px solid #222; padding: 6px 0; display: flex; align-items: center; }
     .news-row:hover { background-color: #111; }
     
-    .news-date { color: #666; font-size: 12px; min-width: 60px; font-weight:bold; }
-    .news-link { color: #FFF !important; text-decoration: none; font-size: 14px; margin-left: 10px; flex-grow: 1; }
+    .news-date { color: #FFF; font-size: 12px; min-width: 60px; font-weight:bold; }
+    .news-link { color: #BBB !important; text-decoration: none; font-size: 14px; margin-left: 10px; flex-grow: 1; }
     .news-link:hover { color: #FFFF00 !important; }
     
     .money-tag { color: #FFD700; font-weight: bold; }
     .stock-tag { color: #00FFFF; font-weight: bold; }
-    .trash-count { color: #444; font-size: 10px; font-style: italic; margin-left: 10px; }
+    .info-stats { color: #444; font-size: 10px; font-style: italic; margin-left: 10px; }
     .src-badge { font-size: 9px; border: 1px solid #444; padding: 1px 4px; border-radius: 3px; color: #888; margin-left: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. LOGIC FILTER "ANTI-TAI" (V34.0)
+# 2. LOGIC FILTER "ANTI-TAI" & "ANTI-BASI"
 # ==========================================
 
-# DAFTAR KATA HARAM (JIKA ADA INI = LANGSUNG BUANG)
+# DAFTAR KATA SAMPAH (TETAP AKTIF)
 SAMPAH_KEYWORDS = [
-    # Kategori Bisnis Ecek-ecek (YANG BOS BENCI)
     "peluang usaha", "ide bisnis", "modal kecil", "modal dengkul", "modal nikah", 
     "usaha rumahan", "jualan", "bisnis kuliner", "franchise", "waralaba", "umkm", 
-    "pedagang", "kaki lima", "lapak", "toko kelontong",
-    
-    # Kategori Keuangan Personal (Bukan Korporasi)
-    "kur bri", "pinjol", "pinjaman online", "gaji", "tunjangan", "pns", "asn", 
-    "lowongan", "loker", "karir", "rekrutmen", "phk", "pesangon", "thr",
+    "pedagang", "kaki lima", "lapak", "toko kelontong", "kur bri", "pinjol", 
+    "gaji", "tunjangan", "pns", "asn", "lowongan", "loker", "karir", "phk", 
     "cara transfer", "biaya admin", "saldo", "rekening", "kartu kredit",
-    
-    # Kategori Clickbait Umum
-    "tips", "cara", "rahasia", "trik", "panduan", "daftar", "syarat", 
+    "tips", "cara", "rahasia", "trik", "panduan", "syarat", 
     "sinopsis", "zodiak", "film", "drama", "viral", "heboh", "cek fakta"
 ]
 
 def clean_filter(title):
     t_low = title.lower()
-    
-    # 1. CEK KATA SAMPAH (Strict Blacklist)
     for sampah in SAMPAH_KEYWORDS:
-        if sampah in t_low:
-            return False # Ada kata sampah -> TENDANG
-            
-    # 2. CEK KONTEKS "MODAL" (Biar gak salah baca lagi)
-    # Kalau ada kata "Modal", pastikan bukan "Modal Kecil" atau "Modal Usaha" (tanpa konteks emiten)
+        if sampah in t_low: return False
     if "modal" in t_low:
-        if "modal kecil" in t_low or "modal usaha" in t_low or "tanpa modal" in t_low:
-            return False
-            
-    # 3. CEK IDENTITAS (Harus Berbau Pasar Modal)
-    # Minimal ada: Tbk, Emiten, Saham, Kode Saham (ABCD), RUPS, Dividen, Triliun, Miliar
+        if "modal kecil" in t_low or "modal usaha" in t_low or "tanpa modal" in t_low: return False
+    
+    # Identitas Wajib
     keywords_wajib = [
         "saham", "tbk", "emiten", "perseroan", "bursa", "bei", "ihsg", "investor",
         "dividen", "rups", "ipo", "triliun", "miliar", "akuisisi", "merger",
         "tender offer", "rights issue", "private placement", "hmetd", "waran"
     ]
-    
-    # Cek Regex Kode Saham (Misal: BBCA, GOTO)
     has_stock_code = bool(re.search(r'\b[A-Z]{4}\b', title))
-    
     has_context = False
     for k in keywords_wajib:
         if k in t_low:
             has_context = True
             break
-            
     if has_stock_code: has_context = True
-    
     return has_context
 
 def formatting(text):
-    # Highlight Uang (Kuning)
     text = re.sub(r"(Rp\s?[\d\.,]+\s?[TM]riliun|Rp\s?[\d\.,]+\s?Miliar|US\$\s?[\d\.,]+)", r"<span class='money-tag'>\1</span>", text, flags=re.IGNORECASE)
-    # Highlight Kode Saham (Cyan)
     text = re.sub(r"\b([A-Z]{4})\b", r"<span class='stock-tag'>\1</span>", text)
     return text
 
 # ==========================================
-# 3. ENGINE PENCARI (DEEP DIVE 14 HARI)
+# 3. ENGINE PENCARI (HARD DATE FILTER)
 # ==========================================
 def hunt(query_list):
     SITES = "site:kontan.co.id OR site:cnbcindonesia.com OR site:idxchannel.com OR site:katadata.co.id"
-    # Gabung semua query list jadi satu string panjang OR
-    # Google batasi query length, jadi kita ambil query utamanya aja
     q_str = " OR ".join(query_list)
+    # Tetap minta Google 14 hari, tapi nanti kita cek ulang
     full_q = f"({SITES}) AND ({q_str}) when:14d"
     
     url = f"https://news.google.com/rss/search?q={full_q.replace(' ', '+')}&hl=id-ID&gl=ID&ceid=ID:id"
@@ -118,17 +96,35 @@ def hunt(query_list):
         
         valid_news = []
         seen = []
-        trash_counter = 0
+        stats_trash = 0
+        stats_old = 0
+        
+        # --- HITUNG CUT-OFF DATE (14 Hari yang lalu dari HARI INI) ---
+        now_utc = datetime.utcnow()
+        cutoff_date = now_utc - timedelta(days=14)
         
         for item in items:
             title = item.title.text
             
-            # --- FILTER ---
+            # 1. PARSING TANGGAL DULUAN
+            try:
+                # Format: Fri, 17 Jan 2026 10:00:00 GMT
+                dt = datetime.strptime(item.pubDate.text, "%a, %d %b %Y %H:%M:%S %Z")
+            except:
+                continue # Kalau tanggal error, skip aja biar aman
+            
+            # 2. HARD FILTER TANGGAL (SATPAM WAKTU)
+            # Jika tanggal berita LEBIH KECIL (TUA) dari cutoff -> BUANG
+            if dt < cutoff_date:
+                stats_old += 1
+                continue
+            
+            # 3. FILTER SAMPAH (ANTI-TAI)
             if not clean_filter(title):
-                trash_counter += 1
+                stats_trash += 1
                 continue
                 
-            # Deduplikasi
+            # 4. DEDUPLIKASI
             is_dup = False
             for s in seen:
                 if difflib.SequenceMatcher(None, title, s).ratio() > 0.7:
@@ -137,33 +133,28 @@ def hunt(query_list):
             if is_dup: continue
             seen.append(title)
             
-            # Date
-            try:
-                dt = datetime.strptime(item.pubDate.text, "%a, %d %b %Y %H:%M:%S %Z")
-            except:
-                dt = datetime.utcnow()
-                
             src = item.source.text if item.source else "Media"
             src = src.replace(".id","").replace(".com","").upper()
             
             valid_news.append({"title": title, "link": item.link.text, "dt": dt, "src": src})
             
-        return sorted(valid_news, key=lambda x: x['dt'], reverse=True), trash_counter
+        return sorted(valid_news, key=lambda x: x['dt'], reverse=True), stats_trash, stats_old
     except:
-        return [], 0
+        return [], 0, 0
 
 # ==========================================
 # 4. DASHBOARD UI
 # ==========================================
-st.title("☠️ CA SNIPER V34 (ANTI-NOISE)")
+st.title("📆 CA SNIPER V35 (STRICT 14 DAYS)")
 wib = datetime.utcnow() + timedelta(hours=7)
-st.caption(f"SCOPE: 14 DAYS | FILTER: STRICT NO 'PELUANG USAHA' | UPDATE: {wib.strftime('%H:%M')} WIB")
+# Tampilkan rentang tanggal valid
+start_date = wib - timedelta(days=14)
+st.caption(f"VALID DATE RANGE: {start_date.strftime('%d %b')} - {wib.strftime('%d %b %Y')} | UPDATE: {wib.strftime('%H:%M')} WIB")
 
-if st.button("🔥 SCAN ULANG (KILL TRASH)"):
+if st.button("🔥 SCAN & FILTER WAKTU"):
     st.cache_data.clear()
     st.rerun()
 
-# DEFINISI TARGET (QUERY DIPERKETAT)
 targets = {
     "🔥 MERGER & AKUISISI": [
         "akuisisi saham", "merger emiten", "caplok saham", "ambil alih saham", "pengendali baru"
@@ -187,11 +178,11 @@ for i, key in enumerate(keys):
         st.markdown(f"<div class='cat-header'>{key}</div>", unsafe_allow_html=True)
         
         with st.spinner("Filtering..."):
-            data, trash = hunt(targets[key])
+            data, trash, old = hunt(targets[key])
         
         if data:
-            st.markdown(f"<span class='trash-count'>Dibuang: {trash} berita sampah</span>", unsafe_allow_html=True)
-            for news in data[:30]: # Max 30 biar ga kepanjangan
+            st.markdown(f"<span class='info-stats'>Sampah Dibuang: {trash} | <b>Berita Basi (>14 hari) Dibuang: {old}</b></span>", unsafe_allow_html=True)
+            for news in data[:30]: 
                 d_str = (news['dt'] + timedelta(hours=7)).strftime("%d/%m")
                 fmt_title = formatting(news['title'])
                 
@@ -205,6 +196,6 @@ for i, key in enumerate(keys):
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.info("Nihil. Bersih dari sampah.")
+            st.info(f"Nihil. (Sampah: {trash}, Basi: {old})")
 
 st.markdown("<br>", unsafe_allow_html=True)
