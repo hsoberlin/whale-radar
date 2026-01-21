@@ -3,27 +3,22 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import warnings
-import requests
-from bs4 import BeautifulSoup
+import feedparser
 import re
-import time
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 import urllib.parse
 from collections import Counter
 
-# ==========================================
-# 1. CONFIGURATION
-# ==========================================
-st.set_page_config(page_title="SWING TRADE MOMENTUM V1.0", layout="wide", page_icon="🚀")
+# 1. Dashboard Configuration
+st.set_page_config(page_title="PREDATOR QUANTUM PRO | MTI REVISED", layout="wide")
 warnings.filterwarnings("ignore")
 
-# Refresh Rate: 5 Menit
-st_autorefresh(interval=300000, key="swing_trade_momentum_v1")
+# High Frequency Refresh: 5 Minutes (300000ms)
+st_autorefresh(interval=300000, key="quantum_daily_sync")
 
-# --- ULTRA-PREMIUM TERMINAL UI (DARK THEME) ---
+# --- ULTRA-PREMIUM TERMINAL UI (STABLE DARK THEME) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;600;900&display=swap');
@@ -38,15 +33,13 @@ st.markdown("""
     }
     .header-title {
         font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 40px !important;
+        font-weight: 900; font-size: 36px !important;
         background: linear-gradient(90deg, #00ffcc, #ff0055);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: 5px;
+        letter-spacing: 4px;
     }
-
-    /* CSS FIX: RESPONSIF UNTUK HP (JUDUL KECIL) */
-    @media only screen and (max-width: 600px) {
-        .header-title { font-size: 22px !important; letter-spacing: 1px !important; }
+    .header-subtitle {
+        font-family: 'JetBrains Mono'; font-size: 10px; color: #888; letter-spacing: 2px;
     }
     
     /* Macro Strip */
@@ -55,29 +48,10 @@ st.markdown("""
         padding: 10px; border-radius: 5px; border: 1px solid #333; margin-bottom: 20px;
     }
     .macro-item { font-family: 'JetBrains Mono'; font-size: 12px; text-align: center; }
-    
-    /* CSS FIX: RESPONSIF UNTUK HP (MACRO DATA RAPAT) */
-    @media only screen and (max-width: 600px) {
-        .macro-strip { flex-wrap: wrap; gap: 5px; }
-        .macro-item { min-width: 30%; margin-bottom: 5px; font-size: 10px !important; }
-    }
-
     .macro-label { font-size: 9px; color: #888; display: block; margin-bottom: 2px; }
     .macro-val-up { color: #00ffcc; font-weight: bold; }
     .macro-val-down { color: #ff0055; font-weight: bold; }
 
-    /* Pixel Box */
-    .pixel-container {
-        display: flex; gap: 5px; margin-bottom: 5px;
-        background: #0a0e14; padding: 5px; border-radius: 5px; border: 1px solid #333;
-    }
-    .pixel-metric {
-        flex: 1; text-align: center; font-family: 'JetBrains Mono';
-    }
-    .pixel-title { font-size: 8px; color: #888; display: block; margin-bottom: 2px; }
-    .pixel-value-up { color: #00ffcc; font-weight: 900; font-size: 12px; text-shadow: 0 0 5px rgba(0,255,204,0.5); }
-    .pixel-value-down { color: #ff0055; font-weight: 900; font-size: 12px; text-shadow: 0 0 5px rgba(255,0,85,0.5); }
-    
     /* Thesis Box */
     .thesis-box {
         background: rgba(2, 20, 20, 0.6); 
@@ -89,6 +63,10 @@ st.markdown("""
     .thesis-header {
         font-family: 'Orbitron'; font-size: 10px; color: #00ffcc; margin-bottom: 5px; letter-spacing: 1px;
     }
+    
+    /* Tag Labels */
+    .tag-trend { background: #004d40; color: #00ffcc; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; border: 1px solid #00ffcc; }
+    .tag-bottom { background: #4a148c; color: #ea80fc; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; border: 1px solid #ea80fc; }
     
     /* News Box */
     .news-scroll-box { max-height: 500px; overflow-y: auto; }
@@ -109,7 +87,7 @@ st.markdown("""
         text-align: center; letter-spacing: 2px; margin: 20px 0;
     }
 
-    /* --- FORCED DARK TABLE STYLE --- */
+    /* Table Override */
     [data-testid="stDataFrame"] { border: 1px solid #333 !important; }
     [data-testid="stDataFrame"] div[role="columnheader"] {
         background-color: #0a0e14 !important; color: #00ffcc !important;
@@ -120,16 +98,10 @@ st.markdown("""
         background-color: #020406 !important; color: #e0e0e0 !important;
         font-family: 'JetBrains Mono' !important; border-bottom: 1px solid #222 !important;
     }
-    [data-testid="stDataFrame"] div[role="row"]:hover div[role="gridcell"] {
-        background-color: rgba(0, 255, 204, 0.1) !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# ==========================================
-# 2. DATABASE & LOGIC ENGINE
-# ==========================================
-
+# --- DATABASE ENGINE (GROUP AFILIASI) ---
 master_afiliasi = {
     "BRPT": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", "CUAN": "PRAJOGO PANGESTU", 
     "BREN": "PRAJOGO PANGESTU", "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
@@ -145,6 +117,8 @@ master_afiliasi = {
     "TKIM": "SINAR MAS", "SMMA": "SINAR MAS", "DUTI": "SINAR MAS",
     "SMAR": "SINAR MAS", "FREN": "SINAR MAS",
     "PANI": "AGUAN (PIK 2)", "CBDK": "AGUAN (SEDAYU)", "ASRI": "AGUAN GROUP",
+    "JIHD": "TOMY WINATA", "AGRO": "TOMY WINATA",
+    "HITS": "TOMMY SOEHARTO", "HUMI": "TOMMY SOEHARTO", "GOLF": "TOMMY SOEHARTO",
     "ADRO": "BOY THOHIR", "ADMR": "BOY THOHIR", "ESSA": "BOY THOHIR",
     "MBMA": "BOY THOHIR", "MDKA": "BOY THOHIR (SANDI)",
     "RAJA": "HAPPY HAPSORO", "CBRE": "HAPPY HAPSORO", "PSAB": "HAPPY HAPSORO",
@@ -153,40 +127,35 @@ master_afiliasi = {
     "BMRI": "STATE OWNED", "BBNI": "STATE OWNED", "TLKM": "STATE OWNED", "ANTM": "STATE OWNED"
 }
 
+# --- SECTOR MAPPING ---
 SECTOR_MAP = {
-    "BBCA": "FINANCE", "BBRI": "FINANCE", "BMRI": "FINANCE", "BBNI": "FINANCE", "BBTN": "FINANCE",
-    "ADRO": "ENERGY", "PTBA": "ENERGY", "ITMG": "ENERGY", "HRUM": "ENERGY", "MEDC": "ENERGY",
-    "ANTM": "BASIC-MAT", "MDKA": "BASIC-MAT", "INCO": "BASIC-MAT", "TINS": "BASIC-MAT", "MBMA": "BASIC-MAT",
-    "TLKM": "INFRA", "ISAT": "INFRA", "EXCL": "INFRA", "JSMR": "INFRA", "TOWR": "INFRA",
-    "ICBP": "CONSUMER", "INDF": "CONSUMER", "UNVR": "CONSUMER", "AMRT": "CONSUMER", "ACES": "CONSUMER",
-    "BSDE": "PROPERTY", "CTRA": "PROPERTY", "SMRA": "PROPERTY", "PANI": "PROPERTY", "ASRI": "PROPERTY",
-    "GOTO": "TECH", "BUKA": "TECH", "EMTK": "TECH", "SCMA": "TECH",
-    "ASSA": "TRANS", "BIRD": "TRANS", "SMDR": "TRANS"
+    "BBCA": "FINANCE", "BBRI": "FINANCE", "BMRI": "FINANCE", "BBNI": "FINANCE",
+    "BBTN": "FINANCE", "BRIS": "FINANCE", "ARTO": "FINANCE", "ADRO": "ENERGY", 
+    "PTBA": "ENERGY", "ITMG": "ENERGY", "BYAN": "ENERGY", "HRUM": "ENERGY", 
+    "MEDC": "ENERGY", "ELSA": "ENERGY", "PGAS": "ENERGY", "ANTM": "BASIC-MAT", 
+    "MDKA": "BASIC-MAT", "INCO": "BASIC-MAT", "TINS": "BASIC-MAT", "MBMA": "BASIC-MAT", 
+    "INKP": "BASIC-MAT", "TKIM": "BASIC-MAT", "SMGR": "BASIC-MAT", "INTP": "BASIC-MAT",
+    "TPIA": "BASIC-MAT", "BRPT": "BASIC-MAT", "TLKM": "INFRA", "ISAT": "INFRA", 
+    "EXCL": "INFRA", "JSMR": "INFRA", "TOWR": "INFRA", "ICBP": "CONSUMER", 
+    "INDF": "CONSUMER", "UNVR": "CONSUMER", "MYOR": "CONSUMER", "AMRT": "CONSUMER",
+    "BSDE": "PROPERTY", "CTRA": "PROPERTY", "SMRA": "PROPERTY", "PWON": "PROPERTY",
+    "PANI": "PROPERTY", "GOTO": "TECH", "BUKA": "TECH", "EMTK": "TECH"
 }
 
 def get_sector(ticker):
-    if ticker in SECTOR_MAP: return SECTOR_MAP[ticker]
-    return "OTHERS"
+    return SECTOR_MAP.get(ticker, "OTHERS")
 
-# === SUMBER BERITA (3 WEB UTAMA) ===
-URLS = {
-    "EmitenNews": "https://emitennews.com",
-    "CNBC Market": "https://www.cnbcindonesia.com/market",
-    "Katadata Fin": "https://katadata.co.id/finansial/bursa"
-}
-
-KEYWORDS = [
-    "Akuisisi", "Private Placement", "Rights Issue", "Right Issue", 
-    "MTO", "Tender Offer", "Ekspansi", "Penambahan Modal", 
-    "Rencana IPO", "IPO", "Buyback", "Saham Treasury", 
-    "Suspensi", "Unusual Market Activity", "Negosiasi", 
-    "Laba", "Rugi", "Kontrak", "Dividen"
+RSS_LINKS = [
+    "https://www.google.co.id/alerts/feeds/16876890487441803706/701647301640953919",
+    "https://www.google.co.id/alerts/feeds/16876890487441803706/701647301640956058",
+    "https://www.google.co.id/alerts/feeds/16876890487441803706/17720372188069162265"
 ]
 
+# --- ROBUST MACRO CONTEXT ---
 def fetch_macro_context():
     macro_data = {}
     try:
-        tickers = ["^JKSE", "IDR=X", "CL=F", "GC=F", "BTC-USD", "^IXIC"] 
+        tickers = ["^JKSE", "IDR=X", "CL=F", "GC=F", "BTC-USD"] 
         df = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=False)['Close']
         
         def safe_extract(col_part, name):
@@ -206,87 +175,54 @@ def fetch_macro_context():
             safe_extract('CL=F', 'OIL')
             safe_extract('GC=F', 'GOLD')
             safe_extract('BTC-USD', 'BITCOIN')
-            safe_extract('^IXIC', 'NASDAQ')
             
-    except Exception as e: pass
+    except Exception: pass
     return macro_data
 
+# --- ANALYTICS ENGINE ---
 def build_flow_features(df):
     df = df.copy()
     df['chg_pct'] = df['Close'].pct_change()
     df['value'] = df['Volume'] * df['Close']
+    
+    # Volume MA
     df['vol_ma5'] = df['Volume'].rolling(5).mean()
     df['vol_ma50'] = df['Volume'].rolling(50).mean()
-    df['vol_ma'] = df['Volume'].rolling(20, min_periods=5).mean()
-    df['vol_power'] = df['Volume'] / df['vol_ma'] # Ini Ratio MA5/MA20 (Standard)
+    df['vol_ma20'] = df['Volume'].rolling(20, min_periods=5).mean()
+    df['vol_power'] = df['Volume'] / df['vol_ma20']
+    df['val_ma'] = df['value'].rolling(20, min_periods=5).mean()
     
-    # Velocity Specific Ratio (MA5 / MA50)
-    df['velocity_ratio'] = df['vol_ma5'] / df['vol_ma50']
-    
+    # Trend Analysis (MA20)
     df['MA20'] = df['Close'].rolling(20).mean()
+    df['MA20_Slope'] = df['MA20'] > df['MA20'].shift(1) # Is MA rising?
     df['Trend_State'] = np.where(df['Close'] > df['MA20'], "BULLISH", "BEARISH")
     
+    # Stochastic
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
-    
     stoch_min = df['RSI'].rolling(14).min()
     stoch_max = df['RSI'].rolling(14).max()
     df['Stoch_K'] = 100 * (df['RSI'] - stoch_min) / (stoch_max - stoch_min)
-    
     df['Stoch_K'] = df['Stoch_K'].fillna(50)
-    df['Full_K'] = df['Stoch_K'].rolling(3).mean().fillna(50) 
-    df['Full_D'] = df['Full_K'].rolling(3).mean().fillna(50)
     
-    df['Mom_State'] = np.where(df['Full_K'] > 80, "STRONG", np.where(df['Full_K'] < 20, "WEAK", "NEUTRAL"))
-    
+    # Flow Sentiment (Proxy)
     typical_price = (df['High'] + df['Low'] + df['Close']) / 3
     raw_money_flow = typical_price * df['Volume']
     flow_dir = np.where(typical_price > typical_price.shift(1), 1, -1)
     df['Net_Flow'] = raw_money_flow * flow_dir
-    df['Flow_Sentiment'] = df['Net_Flow'].rolling(5).sum() 
-    df['Flow_State'] = np.where(df['Flow_Sentiment'] > 0, "INFLOW", "OUTFLOW")
+    df['Flow_State'] = np.where(df['Net_Flow'].rolling(5).sum() > 0, "INFLOW", "OUTFLOW")
+
+    df['Buy_Sig'] = (df['Close'] > df['MA20']) & (df['Close'].shift(1) <= df['MA20'].shift(1)) & (df['Volume'] > df['vol_ma20'])
     
     return df
 
-def get_precise_trendlines(df, window=50):
-    df_recent = df.tail(window).copy()
-    df_recent['idx_num'] = np.arange(len(df_recent))
-    mid_point = window // 2
-    zone_left = df_recent.iloc[:mid_point]
-    zone_right = df_recent.iloc[mid_point:]
-    
-    h1_idx = zone_left['High'].idxmax(); h1_val = zone_left['High'].max(); h1_x = df_recent.loc[h1_idx, 'idx_num']
-    h2_idx = zone_right['High'].idxmax(); h2_val = zone_right['High'].max(); h2_x = df_recent.loc[h2_idx, 'idx_num']
-    
-    l1_idx = zone_left['Low'].idxmin(); l1_val = zone_left['Low'].min(); l1_x = df_recent.loc[l1_idx, 'idx_num']
-    l2_idx = zone_right['Low'].idxmin(); l2_val = zone_right['Low'].min(); l2_x = df_recent.loc[l2_idx, 'idx_num']
-    
-    slope_upper = (h2_val - h1_val) / (h2_x - h1_x) if h2_x != h1_x else 0
-    slope_lower = (l2_val - l1_val) / (l2_x - l1_x) if l2_x != l1_x else 0
-    
-    x_line = np.arange(window) 
-    y_upper_line = [h1_val + slope_upper * (i - h1_x) for i in x_line]
-    y_lower_line = [l1_val + slope_lower * (i - l1_x) for i in x_line]
-    
-    if slope_upper < 0 and slope_lower > 0: pattern = "SYMM TRIANGLE"
-    elif slope_upper < 0 and slope_lower < 0: pattern = "FALLING WEDGE"
-    elif slope_upper > 0 and slope_lower > 0: pattern = "RISING WEDGE"
-    elif slope_upper == 0 and slope_lower > 0: pattern = "ASC TRIANGLE"
-    else: pattern = "CONSOLIDATION"
-
-    return {
-        "dates": df_recent.index,
-        "y_upper": y_upper_line,
-        "y_lower": y_lower_line,
-        "pattern_name": pattern
-    }
-
+# --- ATR-BASED TRADE PLAN ---
 def calculate_trade_plan(df):
     df = df.copy()
-    df['TR'] = df[['High', 'Low', 'Close']].apply(lambda x: max(x['High'] - x['Low'], abs(x['High'] - df['Close'].shift(1).iloc[-1]), abs(x['Low'] - df['Close'].shift(1).iloc[-1])), axis=1)
+    df['TR'] = df[['High', 'Low', 'Close']].apply(lambda x: max(x['High']-x['Low'], abs(x['High']-x.name), abs(x['Low']-x.name)), axis=1) # Simplified TR
     df['ATR'] = df['TR'].rolling(14).mean()
     
     last_close = df['Close'].iloc[-1]
@@ -298,295 +234,251 @@ def calculate_trade_plan(df):
     
     risk_pct = round((risk / last_close) * 100, 1)
     reward_pct = round(((target_price - last_close) / last_close) * 100, 1)
+    
     return stop_loss, target_price, risk_pct, reward_pct
 
-def get_catalyst_tag(headline, existing_topic):
-    text = headline.upper()
-    if existing_topic and existing_topic not in ["STRATEGIS", "LAINNYA"]: return existing_topic
-    if 'LABA' in text or 'PROFIT' in text or 'EARNINGS' in text: return "EARNINGS UPDATE"
-    if 'DIVIDEN' in text: return "DIVIDEND INFO"
-    if 'AKUISISI' in text or 'CPL' in text: return "M&A / AKUISISI"
-    if 'KONTRAK' in text: return "NEW CONTRACT"
-    return "MARKET MOVER"
-
-# === FETCH INTEL (DIRECT SCRAPING) ===
-def fetch_realtime_intel():
+def fetch_intel():
     intel_map, intel_list, news_tickers = {}, [], set()
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    all_targets = list(set(list(master_afiliasi.keys())))
-
-    for source_name, url in URLS.items():
+    topic_map = {
+        "AKUISISI": "AKUISISI", "LABA": "EARNINGS", "RUGI": "EARNINGS", 
+        "DIVIDEN": "DIVIDEN", "KONTRAK": "KONTRAK", "INVESTASI": "INVESTASI"
+    }
+    
+    for url in RSS_LINKS:
         try:
-            r = requests.get(url, headers=headers, timeout=5)
-            soup = BeautifulSoup(r.content, 'html.parser')
-            for a in soup.find_all('a', href=True):
-                text = a.get_text().strip()
-                if len(text) < 20: continue
-                
-                link = a['href']
-                if not link.startswith('http'):
-                    if 'cnbc' in url: link = f"https://www.cnbcindonesia.com{link}"
-                    elif 'katadata' in url: link = f"https://katadata.co.id{link}"
-                    else: link = url + link
-
-                text_upper = text.upper()
-                matched_topic = "STRATEGIS"
-                for kw in KEYWORDS:
-                    if kw.upper() in text_upper:
-                        matched_topic = kw.upper(); break
-                
-                is_relevant = False
-                if matched_topic != "STRATEGIS": is_relevant = True
-                
-                for t in all_targets:
-                    if f" {t} " in f" {text_upper} " or f"({t})" in text_upper:
-                        intel_map[t] = {"title": text, "topic": matched_topic}
+            feed = feedparser.parse(url)
+            for entry in feed.entries:
+                title = entry.title.replace('<b>','').replace('</b>','').strip()
+                tickers = re.findall(r'\b[A-Z]{4}\b', title.upper())
+                topic = "STRATEGIS"
+                for k, v in topic_map.items():
+                    if k in title.upper():
+                        topic = v
+                        break
+                for t in set(tickers):
+                    if t not in ["IHSG", "IDX", "LQ45"]:
+                        intel_map[t] = {"title": title, "topic": topic}
                         news_tickers.add(t)
-                        is_relevant = True
-                
-                if is_relevant and not any(d['NEWS'] == text for d in intel_list):
-                    intel_list.append({"TOPIC": matched_topic, "NEWS": text, "LINK": link})
+                intel_list.append({"TOPIC": topic, "NEWS": title})
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-def analyze_correlation(ticker, stock_chg, macro_data):
-    reasons = []
-    sector = get_sector(ticker)
-    
-    oil_chg = macro_data.get('OIL', {}).get('chg', 0)
-    if stock_chg > 0 and oil_chg > 0.5 and sector == "ENERGY":
-        reasons.append(f"🛢️ <b>COMMODITY PLAY:</b> Diuntungkan kenaikan harga Minyak (+{oil_chg:.2f}%).")
-
-    gold_chg = macro_data.get('GOLD', {}).get('chg', 0)
-    if stock_chg > 0 and gold_chg > 0.5 and (sector == "BASIC-MAT" or sector == "METAL"):
-        reasons.append(f"🛡️ <b>GOLD PROXY:</b> Mengikuti reli harga Emas (+{gold_chg:.2f}%).")
-
-    btc_chg = macro_data.get('BITCOIN', {}).get('chg', 0)
-    if stock_chg > 0 and btc_chg > 2.0 and (sector == "TECH" or sector == "FINANCE"):
-        reasons.append(f"🚀 <b>RISK-ON SENTIMENT:</b> Terdorong sentimen Tech/Crypto (+{btc_chg:.2f}%).")
-
-    if not reasons:
-        ihsg_chg = macro_data.get('IHSG', {}).get('chg', 0)
-        if stock_chg > 0 and ihsg_chg > 0: reasons.append(f"🔗 <b>MARKET SYNC:</b> Bergerak harmonis dengan IHSG.")
-        elif stock_chg > 0 and ihsg_chg < 0: reasons.append(f"🦄 <b>ALPHA MOVER:</b> Melawan arus market (Strong Divergence).")
-        else: reasons.append(f"🎯 <b>IDIOSYNCRATIC:</b> Pergerakan didorong faktor spesifik emiten.")
-            
-    return "<br>".join(reasons)
-
-# --- INTI LOGIKA SCREENING (SWING TRADE MOMENTUM V1.0) ---
+# --- SCANNER ENGINE (REVISED LOGIC) ---
 def scan_market(macro_data):
     results = []
-    intel_map, _, news_tickers = fetch_realtime_intel()
+    intel_map, _, news_tickers = fetch_intel()
     combined_targets = list(set(list(master_afiliasi.keys()) + news_tickers))
-    detected_groups = []
-
+    
     for ticker in combined_targets:
         try:
             s = yf.Ticker(f"{ticker}.JK")
             h = s.history(period="6mo", interval="1d") 
             if len(h) < 60: continue
+            
             h = build_flow_features(h)
             if h.iloc[-1].isnull().any(): continue
+            
             last = h.iloc[-1]
-            
-            # --- STAGE 1: GATEKEEPER (Filter Mutlak) ---
-            # 1. Likuiditas: Min 1 Miliar
-            current_value = last['Close'] * last['Volume']
-            if current_value < 1_000_000_000: continue 
-            
-            # 2. Harga: Min Rp 1 (FCA Masuk)
-            if last['Close'] < 1: continue 
-            
-            # 3. VELOCITY: Wajib ada ledakan volume (MA5 > 1.2x MA50)
-            is_velocity_spike = last['velocity_ratio'] > 1.2
-            if not is_velocity_spike: continue
+            prev = h.iloc[-2]
 
-            # --- STAGE 2: SECONDARY FILTER ---
-            # 4. ANTI-DISTRIBUSI: Jika harga minus (Merah), tendang (karena volume tinggi + merah = bahaya)
-            if last['chg_pct'] < 0: continue
+            # ----------------------------------------------------
+            # SCREENING GATE 1: SAFETY & LIQUIDITY
+            # ----------------------------------------------------
+            # Logic: Buang saham 'tidur' (Transaksi < 5 Miliar)
+            if last['value'] < 5_000_000_000: 
+                continue
 
-            # --- PEMBOBOTAN (SCORING) ---
-            score = 15 # Base Score (Lolos Gatekeeper)
-            thesis_points = []
+            # ----------------------------------------------------
+            # SCREENING GATE 2: STRUCTURE CHECK
+            # ----------------------------------------------------
+            # Logic: Hanya terima saham UPTREND atau REVERSAL (Bottom)
+            is_uptrend = last['Close'] > last['MA20']
+            is_reversal = (last['Close'] < last['MA20']) and (last['Stoch_K'] < 20)
             
-            news_info = intel_map.get(ticker, {})
-            news_headline = news_info.get('title', '')
-            news_topic_raw = news_info.get('topic', '')
+            if not (is_uptrend or is_reversal):
+                continue
+
+            # ----------------------------------------------------
+            # SCREENING GATE 3: TRIGGER ACTION
+            # ----------------------------------------------------
+            # Logic: Tetap gunakan Volume Spike OR News sebagai pemicu
+            is_vol_spike = last['vol_ma5'] > 1.2 * last['vol_ma50']
             has_news = ticker in intel_map
-            group_name = master_afiliasi.get(ticker, "EXTERNAL")
             
-            if score > 15 and group_name != "EXTERNAL": detected_groups.append(group_name)
-            catalyst_tag = get_catalyst_tag(news_headline, news_topic_raw) if has_news else "TECHNICAL MOVER"
+            if not (is_vol_spike or has_news):
+                continue
             
-            # 1. WHALE POWER
+            # ----------------------------------------------------
+            # MTI SCORING SYSTEM (BASE = 10)
+            # ----------------------------------------------------
+            score = 10
+            thesis_points = []
+            strategy_tag = "TREND FOLLOWING" if is_uptrend else "BOTTOM FISHING"
+            
+            # 1. VOLUME SCORING (Max +40)
             if last['vol_power'] > 3.0:
-                score += 35 # Whale Boost
-                thesis_points.append(f"🌊 <b>LIQUIDITY INJECTION:</b> Deteksi akumulasi volume ekstrem ({last['vol_power']:.1f}x).")
-                if not has_news: catalyst_tag = "WHALE INFLOW"
-            else:
-                score += 15 # Standard Velocity Flow
-                thesis_points.append(f"💧 <b>FLOW ACTIVITY:</b> Volume & Velocity Valid ({last['velocity_ratio']:.2f}x).")
+                score += 40
+                thesis_points.append(f"🌊 <b>WHALE ALERT:</b> Volume ekstrem {last['vol_power']:.1f}x rata-rata.")
+            elif last['vol_power'] > 1.2:
+                score += 20
+                thesis_points.append(f"💧 <b>ACCUMULATION:</b> Volume naik stabil di atas rata-rata.")
+            
+            # 2. TECHNICAL SCORING (Max +30)
+            if is_uptrend:
+                score += 20
+                thesis_points.append("📈 <b>STRUCTURE:</b> Harga di atas MA20 (Bullish).")
+            if last['MA20_Slope']: # MA20 Sloping Up
+                score += 10
+                thesis_points.append("🚀 <b>MOMENTUM:</b> Garis MA20 menanjak (Strong Trend).")
+            if is_reversal:
+                thesis_points.append("🎣 <b>REVERSAL:</b> Oversold (Stoch < 20) + Volume. Potensi pantulan.")
 
-            # 2. BERITA (Catalyst)
-            if has_news: 
-                score += 40 # News Boost
-                topic_display = news_topic_raw if news_topic_raw != "STRATEGIS" else "NEWS UPDATE"
-                thesis_points.append(f"📰 <b>EVENT: {topic_display}</b> - {news_headline[:60]}...")
-
-            # 3. KORELASI MAKRO
-            beta_thesis = analyze_correlation(ticker, last['chg_pct'], macro_data)
-            thesis_points.append(beta_thesis)
-
-            # Trade Plan
+            # 3. NEWS SCORING (Max +20)
+            if has_news:
+                score += 20
+                news_info = intel_map.get(ticker, {})
+                thesis_points.append(f"📰 <b>NEWS:</b> {news_info.get('title')[:60]}...")
+            
+            # 4. MACRO CORRELATION
+            oil_chg = macro_data.get('OIL', {}).get('chg', 0)
+            if get_sector(ticker) == "ENERGY" and oil_chg > 0.5:
+                thesis_points.append(f"🛢️ <b>OIL PLAY:</b> Didukung kenaikan harga minyak (+{oil_chg:.1f}%).")
+            
+            # EXECUTION PLAN
             stop_loss, target_price, risk_pct, reward_pct = calculate_trade_plan(h)
-            entry_price = int(last['Close'])
             
             plan_html = (
                 f"<div style='margin-top:8px; padding:5px; border-top:1px dashed #333; font-family:JetBrains Mono; font-size:11px;'>"
-                f"🛡️ <b>EXECUTION:</b> BUY {entry_price} | <span style='color:#ff4d4d'>STOP {stop_loss} (-{risk_pct}%)</span> | "
-                f"<span style='color:#00ffcc'>TARGET {target_price} (+{reward_pct}%)</span>"
+                f"🛡️ <b>PLAN:</b> BUY {int(last['Close'])} | <span style='color:#ff4d4d'>SL {stop_loss} (-{risk_pct}%)</span> | "
+                f"<span style='color:#00ffcc'>TP {target_price} (+{reward_pct}%)</span>"
                 f"</div>"
             )
             thesis_points.append(plan_html)
-            final_thesis = "<br>".join(thesis_points)
             
-            porto = "15-20% (Aggressive)" if score >= 80 else ("10% (Medium)" if score >= 60 else "2-5% (Speculative)")
+            final_thesis = "<br>".join(thesis_points)
+            porto = "HIGH CONVICTION" if score >= 70 else ("MODERATE" if score >= 50 else "SPECULATIVE")
 
             results.append({
-                "SYMBOL": ticker, "CONF": max(0, min(score, 100)), "VOL_POWER": round(last['vol_power'], 2),
-                "FLOW_VELOCITY": round(last['velocity_ratio'], 2), "PRICE": int(last['Close']),
-                "CHG%": round(last['chg_pct']*100, 2), "VALUE": round(last['value']/1e9, 1), 
-                "GROUP": group_name, "THESIS": final_thesis, "PORTO": porto, 
-                "NEWS_INTEL": news_headline, "CATALYST_TAG": catalyst_tag, "RAW_DATA": h,
-                "PIXEL_TREND": last['Trend_State'], "PIXEL_MOMENTUM": last['Mom_State'], "FLOW_STATE": last['Flow_State']
+                "SYMBOL": ticker, "CONF": max(0, min(score, 100)), 
+                "VOL_POWER": round(last['vol_power'], 2),
+                "PRICE": int(last['Close']), "CHG%": round(last['chg_pct']*100, 2),
+                "VALUE": round(last['value']/1e9, 1), 
+                "GROUP": master_afiliasi.get(ticker, "EXTERNAL"),
+                "THESIS": final_thesis, "PORTO": porto, 
+                "STRATEGY": strategy_tag,
+                "RAW_DATA": h,
+                "PIXEL_TREND": last['Trend_State'],
+                "FLOW_STATE": last['Flow_State']
             })
         except: continue
         
-    market_pulse_text = "MIXED MARKET"
-    if detected_groups:
-        counts = Counter(detected_groups)
-        most_common = counts.most_common(1)[0]
-        if most_common[1] >= 2: market_pulse_text = f"ROTATION: {most_common[0]} GROUP"
-    return results, market_pulse_text
+    return results
 
-def render_quantum_pixel_chart(target):
-    df = target['RAW_DATA'].tail(50) 
-    t_data = get_precise_trendlines(target['RAW_DATA'], window=50)
-    
-    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, 
-                        vertical_spacing=0.03, row_heights=[0.50, 0.15, 0.05, 0.30],
-                        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]])
+def render_chart(target):
+    df = target['RAW_DATA'].tail(50)
+    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.2, 0.2])
 
+    # Price & MA20
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
                                  name=target['SYMBOL'], increasing_line_color='#00ffcc', decreasing_line_color='#ff0055'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], line=dict(color='#ffff00', width=1), name='MA20'), row=1, col=1)
     
-    fig.add_trace(go.Scatter(x=df.index, y=t_data['y_upper'], mode='lines', line=dict(color='rgba(0, 255, 204, 0.3)', width=8), hoverinfo='skip', showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=t_data['y_upper'], mode='lines', line=dict(color='#00ffcc', width=2), name='Res'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=t_data['y_lower'], mode='lines', line=dict(color='rgba(255, 0, 85, 0.3)', width=8), hoverinfo='skip', showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=t_data['y_lower'], mode='lines', line=dict(color='#ff0055', width=2), name='Sup'), row=1, col=1)
-
-    group_info = target['GROUP']
-    header_label = f"FOCUS: {target['CATALYST_TAG']}" if group_info == "EXTERNAL" else f"AFFILIATION: {group_info}"
-    header_color = "#cccccc" if group_info == "EXTERNAL" else "#00ffcc"
-
-    last_candle_idx = df.index[-1]
-    last_high_price = df['High'].iloc[-1]
-    
-    label_text = (f"<b>{target['SYMBOL']}</b><br><span style='font-size: 10px; color: {header_color};'>{header_label}</span><br>"
-                  f"<span style='font-size: 10px; color: #ff0055;'><b>{t_data['pattern_name']}</b></span>")
-    
-    fig.add_annotation(x=last_candle_idx, y=last_high_price, text=label_text, showarrow=True, arrowhead=2, ax=0, ay=-50, bgcolor="rgba(10, 14, 20, 0.8)", bordercolor="#00ffcc", row=1, col=1)
-
+    # Volume
     colors_vol = ['#00ffcc' if r >= o else '#ff0055' for r, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors_vol, name='Volume'), row=2, col=1)
     
-    colors = ['#00ffcc' if x == "BULLISH" else '#ff0055' for x in df['Trend_State']]
-    fig.add_trace(go.Bar(x=df.index, y=[1]*len(df), marker_color=colors, width=1, name='STATE'), row=3, col=1)
+    # Stochastic
+    fig.add_trace(go.Scatter(x=df.index, y=df['Stoch_K'], line=dict(color='#0088ff', width=2), name='Stoch K'), row=3, col=1)
+    fig.add_hline(y=20, line_dash="dot", line_color="gray", row=3, col=1)
+    fig.add_hline(y=80, line_dash="dot", line_color="gray", row=3, col=1)
 
-    fig.add_trace(go.Scatter(x=df.index, y=df['Full_K'], line=dict(color='#0088ff', width=2), name='%K'), row=4, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['Full_D'], line=dict(color='#ff5500', width=2), name='%D'), row=4, col=1)
-    fig.add_hline(y=80, line_dash="dot", line_color="gray", row=4, col=1)
-    fig.add_hline(y=20, line_dash="dot", line_color="gray", row=4, col=1)
-
-    fig.update_layout(template="plotly_dark", height=500, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', showlegend=False, margin=dict(l=10, r=10, t=60, b=10))
-    fig.update_xaxes(showticklabels=False, row=1, col=1); fig.update_xaxes(showticklabels=False, row=2, col=1); fig.update_xaxes(showticklabels=False, row=3, col=1)
+    tag_color = "#00ffcc" if target['STRATEGY'] == "TREND FOLLOWING" else "#ea80fc"
+    title_text = f"<b style='color: white; font-size: 16px;'>{target['SYMBOL']}</b> <span style='color:{tag_color}; font-size:12px;'>[{target['STRATEGY']}]</span>"
+    
+    fig.update_layout(template="plotly_dark", height=400, margin=dict(l=0, r=0, t=40, b=0), title=dict(text=title_text, x=0.02, y=0.96), showlegend=False)
+    fig.update_xaxes(showticklabels=False, row=1, col=1); fig.update_xaxes(showticklabels=False, row=2, col=1)
     return fig
 
-# --- MAIN EXECUTION ---
-st.markdown('<div class="header-container"><div class="header-title">SWING TRADE MOMENTUM V1.0</div></div>', unsafe_allow_html=True)
+# --- INTERFACE RENDERING ---
+st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO</div><div class="header-subtitle">MTI REVISED EDITION | SCREENER & SCORING PROTOCOL V2.0</div></div>', unsafe_allow_html=True)
 
 macro_data = fetch_macro_context()
 loading_placeholder = st.empty()
-loading_placeholder.markdown('<div class="blink">SYSTEM SCANNING: PROCESSING GLOBAL MACRO & FLOW...</div>', unsafe_allow_html=True)
+loading_placeholder.markdown('<div class="blink">SYSTEM INITIALIZING... SCANNING LIQUIDITY & STRUCTURE...</div>', unsafe_allow_html=True)
 
-data, market_pulse = scan_market(macro_data)
-_, news_feed, _ = fetch_realtime_intel()
+data = scan_market(macro_data)
+_, news_feed, _ = fetch_intel()
 loading_placeholder.empty()
 
+# MACRO STRIP
 if macro_data:
-    st.markdown(f"<div style='text-align:center; margin-bottom:10px; color:#00ffcc; font-family:Orbitron; letter-spacing:2px; font-size:12px;'>📡 MARKET PULSE: {market_pulse}</div>", unsafe_allow_html=True)
     cols = st.columns(len(macro_data))
     html_macro = "<div class='macro-strip'>"
     for k, v in macro_data.items():
         color = "macro-val-up" if v['chg'] >= 0 else "macro-val-down"
         arrow = "▲" if v['chg'] >= 0 else "▼"
-        val_str = f"{v['val']:.2f}" if v['val'] is not None else "N/A"
-        chg_str = f"{v['chg']:.2f}%" if v['val'] is not None else "0.00%"
-        html_macro += f"<div class='macro-item'><span class='macro-label'>{k}</span><br><span class='{color}'>{val_str} ({arrow} {chg_str})</span></div>"
+        html_macro += f"<div class='macro-item'><span class='macro-label'>{k}</span><br><span class='{color}'>{v['val']:.2f} ({arrow} {v['chg']:.2f}%)</span></div>"
     html_macro += "</div>"
     st.markdown(html_macro, unsafe_allow_html=True)
 
 if data:
     df_display = pd.DataFrame(data).sort_values(by="CONF", ascending=False)
+    
+    # METRICS SUMMARY
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("TOTAL SCREENED", len(df_display))
+    col_m2.metric("AVG CONFIDENCE", f"{int(df_display['CONF'].mean())}%")
+    trend_count = len(df_display[df_display['STRATEGY']=="TREND FOLLOWING"])
+    col_m3.metric("MARKET REGIME", "BULLISH" if trend_count > len(df_display)/2 else "BEARISH")
+
     col_main, col_news = st.columns([3, 1])
     
     with col_main:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📡 REAL-TIME WHALE TRACKER</h3>", unsafe_allow_html=True)
-        st.dataframe(df_display[["SYMBOL", "CONF", "VOL_POWER", "FLOW_VELOCITY", "PRICE", "CHG%", "VALUE", "PORTO"]], column_config={
-            "CONF": st.column_config.ProgressColumn("CONF", min_value=0, max_value=100, format="%d%%"),
-            "VOL_POWER": st.column_config.NumberColumn("VOL PWR", format="%.2fx ⚡"),
-            "FLOW_VELOCITY": st.column_config.NumberColumn("FLOW VELOCITY", format="%.2fx"),
+        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📡 ACTIVE OPPORTUNITIES</h3>", unsafe_allow_html=True)
+        
+        # TABLE
+        st.dataframe(df_display[["SYMBOL", "STRATEGY", "CONF", "VOL_POWER", "PRICE", "CHG%", "VALUE", "PORTO"]], column_config={
+            "STRATEGY": st.column_config.TextColumn("SETUP", width="medium"),
+            "CONF": st.column_config.ProgressColumn("SCORE", min_value=0, max_value=100, format="%d"),
+            "VOL_POWER": st.column_config.NumberColumn("VOL (xAvg)", format="%.1fx"),
             "VALUE": st.column_config.NumberColumn("VAL (B)", format="%.1fB"),
-            "PORTO": st.column_config.TextColumn("ALLOC")
         }, use_container_width=True, hide_index=True, height=350)
 
-        top_targets = df_display.head(4).to_dict('records')
+        # CHARTS FOR TOP PICKS
+        st.markdown("---")
+        st.markdown("<h3 style='font-family:Orbitron; color:#00ffcc; font-size:18px;'>📊 TOP CONVICTION CHARTS</h3>", unsafe_allow_html=True)
         
-        if top_targets:
-            st.markdown("<h3 style='font-family:Orbitron; color:#00ffcc; font-size:18px; margin-top:20px;'>📊 QUAD-CORE PIXEL MONITORING (TOP 4)</h3>", unsafe_allow_html=True)
-            for i in range(0, len(top_targets), 2):
-                cols = st.columns(2) 
-                batch = top_targets[i:i+2] 
-                for idx, target in enumerate(batch):
-                    with cols[idx]:
-                        st.markdown(f"""
-                        <div class="pixel-container">
-                            <div class="pixel-metric"><span class="pixel-title">TREND</span><span class="{ 'pixel-value-up' if target['PIXEL_TREND']=='BULLISH' else 'pixel-value-down' }">{target['PIXEL_TREND']}</span></div>
-                            <div class="pixel-metric"><span class="pixel-title">FLOW</span><span class="{ 'pixel-value-up' if target['FLOW_STATE']=='INFLOW' else 'pixel-value-down' }">{target['FLOW_STATE']}</span></div>
-                             <div class="pixel-metric"><span class="pixel-title">WHALE</span><span class="pixel-value-up">{target['VOL_POWER']}x</span></div>
-                        </div>""", unsafe_allow_html=True)
-                        fig = render_quantum_pixel_chart(target)
-                        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px; margin-top:30px;'>📝 STRATEGIC INVESTMENT ANALYSIS</h3>", unsafe_allow_html=True)
-        for row in top_targets:
-            st.markdown(f"""
-            <div class="thesis-box">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color:#ff0055; font-weight:bold; font-size:14px;">{row['SYMBOL']}</span>
-                    <span style="color:#00ffcc; font-family: 'JetBrains Mono'; font-size: 10px;">{row['PORTO']}</span>
-                </div>
-                <div class="thesis-header">INSTITUTIONAL THESIS:</div>
-                <div style="color:#e0e0e0;">{row['THESIS']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+        top_picks = df_display.head(4).to_dict('records')
+        for i in range(0, len(top_picks), 2):
+            cols = st.columns(2)
+            batch = top_picks[i:i+2]
+            for idx, target in enumerate(batch):
+                with cols[idx]:
+                    # Render Strategy Tag
+                    tag_class = "tag-trend" if target['STRATEGY'] == "TREND FOLLOWING" else "tag-bottom"
+                    st.markdown(f"<span class='{tag_class}'>{target['STRATEGY']}</span>", unsafe_allow_html=True)
+                    
+                    # Render Chart
+                    fig = render_chart(target)
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Render Thesis
+                    st.markdown(f"""
+                    <div class="thesis-box">
+                        <div class="thesis-header">{target['GROUP']} | SCORE: {target['CONF']}</div>
+                        {target['THESIS']}
+                    </div>
+                    """, unsafe_allow_html=True)
 
     with col_news:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ffffff; font-size:18px;'>💡 STRATEGIC INTEL</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-family:Orbitron; color:#ffffff; font-size:18px;'>💡 INTEL FEED</h3>", unsafe_allow_html=True)
         st.markdown('<div class="news-scroll-box">', unsafe_allow_html=True)
-        for item in news_feed[:15]: 
+        for item in news_feed[:20]: 
             q = urllib.parse.quote(item['NEWS'])
             st.markdown(f'''<div class="news-box"><div class="news-topic-header">{item["TOPIC"]}</div><div class="news-text"><a href="https://www.google.com/search?q={q}" target="_blank">{item["NEWS"]}</a></div></div>''', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption("SWING TRADE MOMENTUM V1.0 | INSTITUTIONAL GRADE ANALYTICS | 2026 WALL STREET STANDARD")
+else:
+    st.warning("SYSTEM SCAN COMPLETE: NO ASSETS MATCHED THE STRICT CRITERIA (Liquidity > 5B & Structure Valid). MARKET MAY BE DORMANT.")
+
+st.caption("PREDATOR QUANTUM PRO | MTI REVISED EDITION | 2026")
