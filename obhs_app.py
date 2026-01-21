@@ -43,6 +43,11 @@ st.markdown("""
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         letter-spacing: 5px;
     }
+
+    /* CSS FIX: RESPONSIF UNTUK HP (JUDUL KECIL) */
+    @media only screen and (max-width: 600px) {
+        .header-title { font-size: 22px !important; letter-spacing: 1px !important; }
+    }
     
     /* Macro Strip */
     .macro-strip {
@@ -50,6 +55,13 @@ st.markdown("""
         padding: 10px; border-radius: 5px; border: 1px solid #333; margin-bottom: 20px;
     }
     .macro-item { font-family: 'JetBrains Mono'; font-size: 12px; text-align: center; }
+    
+    /* CSS FIX: RESPONSIF UNTUK HP (MACRO DATA RAPAT) */
+    @media only screen and (max-width: 600px) {
+        .macro-strip { flex-wrap: wrap; gap: 5px; }
+        .macro-item { min-width: 30%; margin-bottom: 5px; font-size: 10px !important; }
+    }
+
     .macro-label { font-size: 9px; color: #888; display: block; margin-bottom: 2px; }
     .macro-val-up { color: #00ffcc; font-weight: bold; }
     .macro-val-down { color: #ff0055; font-weight: bold; }
