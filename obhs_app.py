@@ -151,11 +151,12 @@ RSS_LINKS = [
     "https://www.google.co.id/alerts/feeds/16876890487441803706/17720372188069162265"
 ]
 
-# --- ROBUST MACRO CONTEXT ---
+# --- ROBUST MACRO CONTEXT (REVISED: BITCOIN REMOVED) ---
 def fetch_macro_context():
     macro_data = {}
     try:
-        tickers = ["^JKSE", "IDR=X", "CL=F", "GC=F", "BTC-USD"] 
+        # BITCOIN REMOVED FROM LIST
+        tickers = ["^JKSE", "IDR=X", "CL=F", "GC=F"] 
         df = yf.download(tickers, period="5d", interval="1d", progress=False, auto_adjust=False)['Close']
         
         def safe_extract(col_part, name):
@@ -174,7 +175,6 @@ def fetch_macro_context():
             safe_extract('IDR=X', 'USDIDR')
             safe_extract('CL=F', 'OIL')
             safe_extract('GC=F', 'GOLD')
-            safe_extract('BTC-USD', 'BITCOIN')
             
     except Exception: pass
     return macro_data
@@ -263,7 +263,7 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- SCANNER ENGINE (REVISED LOGIC) ---
+# --- SCANNER ENGINE (REVISED LOGIC: LIQUIDITY FILTER REMOVED) ---
 def scan_market(macro_data):
     results = []
     intel_map, _, news_tickers = fetch_intel()
@@ -282,11 +282,11 @@ def scan_market(macro_data):
             prev = h.iloc[-2]
 
             # ----------------------------------------------------
-            # SCREENING GATE 1: SAFETY & LIQUIDITY
+            # SCREENING GATE 1: LIQUIDITY FILTER (REMOVED)
             # ----------------------------------------------------
-            # Logic: Buang saham 'tidur' (Transaksi < 5 Miliar)
-            if last['value'] < 5_000_000_000: 
-                continue
+            # Note: Filter 5 Miliar dihapus sesuai request agar saham 
+            # second liner tetap masuk walau pasar sepi.
+            # if last['value'] < 5_000_000_000: continue
 
             # ----------------------------------------------------
             # SCREENING GATE 2: STRUCTURE CHECK
@@ -400,11 +400,11 @@ def render_chart(target):
     return fig
 
 # --- INTERFACE RENDERING ---
-st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO</div><div class="header-subtitle">MTI REVISED EDITION | SCREENER & SCORING PROTOCOL V2.0</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO</div><div class="header-subtitle">MTI REVISED EDITION | SCREENER & SCORING PROTOCOL V2.1</div></div>', unsafe_allow_html=True)
 
 macro_data = fetch_macro_context()
 loading_placeholder = st.empty()
-loading_placeholder.markdown('<div class="blink">SYSTEM INITIALIZING... SCANNING LIQUIDITY & STRUCTURE...</div>', unsafe_allow_html=True)
+loading_placeholder.markdown('<div class="blink">SYSTEM INITIALIZING... SCANNING MARKET STRUCTURE...</div>', unsafe_allow_html=True)
 
 data = scan_market(macro_data)
 _, news_feed, _ = fetch_intel()
@@ -479,6 +479,6 @@ if data:
         st.markdown('</div>', unsafe_allow_html=True)
 
 else:
-    st.warning("SYSTEM SCAN COMPLETE: NO ASSETS MATCHED THE STRICT CRITERIA (Liquidity > 5B & Structure Valid). MARKET MAY BE DORMANT.")
+    st.warning("SYSTEM SCAN COMPLETE: NO ASSETS MATCHED THE CRITERIA. MARKET MAY BE DORMANT OR OFFLINE.")
 
 st.caption("PREDATOR QUANTUM PRO | MTI REVISED EDITION | 2026")
