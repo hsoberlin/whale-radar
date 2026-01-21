@@ -26,22 +26,26 @@ st.markdown("""
     .stApp { background-color: #020406; color: #ffffff; }
     
     .header-container {
-        padding: 20px; background: rgba(0, 255, 204, 0.02);
+        padding: 10px; background: rgba(0, 255, 204, 0.02);
         border-radius: 10px; border: 1px solid rgba(0, 255, 204, 0.1);
-        text-align: center; margin-bottom: 20px;
+        text-align: center; margin-bottom: 10px;
     }
     
     .header-title {
         font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 50px !important;
+        font-weight: 900; font-size: 24px !important;
         background: linear-gradient(90deg, #00ffcc, #ff0055);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: 8px;
+        letter-spacing: 2px;
     }
     
-    .macro-strip { display: flex; justify-content: space-around; background: #0a0e14; padding: 10px; border-radius: 5px; border: 1px solid #333; margin-bottom: 20px; }
-    .macro-item { font-family: 'JetBrains Mono'; font-size: 12px; text-align: center; }
-    .macro-label { font-size: 9px; color: #888; display: block; margin-bottom: 2px; }
+    /* MACRO STRIP RESPONSIVE */
+    .macro-strip { 
+        display: flex; justify-content: space-around; flex-wrap: wrap;
+        background: #0a0e14; padding: 5px; border-radius: 5px; border: 1px solid #333; margin-bottom: 15px; 
+    }
+    .macro-item { font-family: 'JetBrains Mono'; font-size: 10px; text-align: center; padding: 2px 5px;}
+    .macro-label { font-size: 8px; color: #888; display: block; margin-bottom: 1px; }
     .macro-val-up { color: #00ffcc; font-weight: bold; }
     .macro-val-down { color: #ff0055; font-weight: bold; }
 
@@ -49,8 +53,8 @@ st.markdown("""
         animation: blinker 1.5s linear infinite;
         color: #00ffcc;
         font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        margin-bottom: 20px; text-align: center;
+        font-size: 10px;
+        margin-bottom: 10px; text-align: center;
     }
     @keyframes blinker { 50% { opacity: 0; } }
 
@@ -227,17 +231,11 @@ def build_flow_features(df):
     df['Trend_State'] = np.where(df['Close'] > df['MA20'], "BULLISH", "BEARISH")
     
     # --- STOCHASTIC 10, 5, 5 CALCULATION ---
-    # 1. Raw Stochastic %K (Lookback 10)
     low_min = df['Low'].rolling(10).min()
     high_max = df['High'].rolling(10).max()
-    # Handle division by zero
     diff = high_max - low_min
     df['Raw_K'] = np.where(diff == 0, 50, 100 * ((df['Close'] - low_min) / diff))
-    
-    # 2. Slow %K (Smoothing Raw K with SMA 5) -> Ini yang jadi Garis Utama
     df['Stoch_K'] = df['Raw_K'].rolling(5).mean().fillna(50)
-    
-    # 3. Slow %D (Smoothing Slow K with SMA 5) -> Ini yang jadi Signal Line
     df['Stoch_D'] = df['Stoch_K'].rolling(5).mean().fillna(50)
     
     typical = (df['High'] + df['Low'] + df['Close']) / 3
@@ -253,18 +251,19 @@ def calculate_trade_plan(df):
     target_price = int(last_close + ((last_close - stop_loss) * 2.0))
     risk_pct = round(((last_close - stop_loss) / last_close) * 100, 1)
     reward_pct = round(((target_price - last_close) / last_close) * 100, 1)
-    return stop_loss, target_price, risk_pct, reward_pct
+    
+    # Calculate RRR
+    risk_val = last_close - stop_loss
+    reward_val = target_price - last_close
+    rrr = round(reward_val / risk_val, 1) if risk_val > 0 else 0
+    
+    return stop_loss, target_price, risk_pct, reward_pct, rrr
 
 def fetch_intel():
     intel_map, intel_list, news_tickers = {}, [], set()
     topic_map = {
-        "AKUISISI": "AKUISISI", 
-        "LABA": "EARNINGS", 
-        "RUGI": "EARNINGS", 
-        "DIVIDEN": "DIVIDEN", 
-        "KONTRAK": "KONTRAK",
-        "RIGHT ISSUE": "RIGHTS ISSUE", 
-        "HMETD": "RIGHTS ISSUE"
+        "AKUISISI": "AKUISISI", "LABA": "EARNINGS", "RUGI": "EARNINGS", "DIVIDEN": "DIVIDEN", 
+        "KONTRAK": "KONTRAK", "RIGHT ISSUE": "RIGHTS ISSUE", "HMETD": "RIGHTS ISSUE"
     }
     for url in RSS_LINKS:
         try:
@@ -283,17 +282,14 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- BULK SCANNER ENGINE (ANTI-BLOCK) ---
+# --- BULK SCANNER ENGINE ---
 def scan_market(macro_data):
     results = []
     intel_map, _, news_tickers = fetch_intel()
     raw_tickers = list(set(list(master_afiliasi.keys()) + news_tickers))
-    
-    # Format for Yahoo (Bulk)
     yf_tickers = [f"{t}.JK" for t in raw_tickers]
     
     try:
-        # BULK DOWNLOAD (Native YF)
         bulk_data = yf.download(yf_tickers, period="6mo", interval="1d", group_by='ticker', progress=False, threads=True)
     except Exception as e:
         st.error(f"DATA FETCH ERROR: {str(e)}. Try refreshing.")
@@ -302,8 +298,7 @@ def scan_market(macro_data):
     for ticker_raw in raw_tickers:
         ticker_fmt = f"{ticker_raw}.JK"
         try:
-            if len(yf_tickers) == 1: 
-                df = bulk_data
+            if len(yf_tickers) == 1: df = bulk_data
             else:
                 if ticker_fmt not in bulk_data.columns.levels[0]: continue
                 df = bulk_data[ticker_fmt].copy()
@@ -316,31 +311,51 @@ def scan_market(macro_data):
             if h.iloc[-1].isnull().any(): continue
             last = h.iloc[-1]
             
-            # --- FILTERS (Logic Tetap: Struktur ATAU Reversal + Volume ATAU News) ---
-            # 1. Structure (Uptrend OR Bottom Reversal)
+            # --- FILTERS ---
             is_uptrend = last['Close'] > last['MA20']
             is_reversal = (last['Close'] < last['MA20']) and (last['Stoch_K'] < 20)
             if not (is_uptrend or is_reversal): continue
             
-            # 2. Trigger (Vol Spike OR News)
             is_vol_spike = last['vol_ma5'] > 1.2 * last['vol_ma50']
             has_news = ticker_raw in intel_map
             if not (is_vol_spike or has_news): continue
             
-            # --- SCORING ---
+            # --- SCORING & THESIS ---
             score = 10
             thesis_points = []
             strategy_tag = "TREND FOLLOWING" if is_uptrend else "BOTTOM FISHING"
             
-            if last['vol_power'] > 3.0: score += 40; thesis_points.append(f"🌊 <b>WHALE:</b> Vol {last['vol_power']:.1f}x avg.")
-            elif last['vol_power'] > 1.2: score += 20; thesis_points.append(f"💧 <b>ACCUM:</b> Vol steady > avg.")
+            # Volume Analysis (Professional)
+            vol_growth = (last['vol_power'] - 1) * 100
+            if last['vol_power'] > 3.0: 
+                score += 40
+                thesis_points.append(f"🌊 <b>INSTITUTIONAL ACCUMULATION:</b> High conviction volume spike (+{vol_growth:.0f}% vs Avg).")
+            elif last['vol_power'] > 1.2: 
+                score += 20
+                thesis_points.append(f"💧 <b>LIQUIDITY FLOW:</b> Consistent accumulation activity (+{vol_growth:.0f}% vs Avg).")
             
-            if is_uptrend: score += 20; thesis_points.append("📈 <b>MA20:</b> Bullish Structure.")
-            if last['MA20_Slope']: score += 10; thesis_points.append("🚀 <b>MOMENTUM:</b> Strong Trend.")
-            if has_news: score += 20; thesis_points.append("📰 <b>NEWS:</b> Sentiment Driver.")
+            # Technical Analysis (Professional)
+            if is_uptrend: 
+                score += 20
+                thesis_points.append("📈 <b>MARKET STRUCTURE:</b> Bullish phase confirmed (Price > MA20).")
+            if last['MA20_Slope']: 
+                score += 10
+                thesis_points.append("🚀 <b>MOMENTUM VELOCITY:</b> Accelerating trend strength detected.")
+            if has_news: 
+                score += 20
+                thesis_points.append("📰 <b>CATALYST DRIVER:</b> Significant corporate action/news detected.")
             
-            stop_loss, target_price, risk_pct, reward_pct = calculate_trade_plan(h)
-            plan_html = f"<div style='margin-top:5px; padding:5px; border-top:1px dashed #333; font-size:11px;'>🛡️ BUY {int(last['Close'])} | <span style='color:#ff4d4d'>SL {stop_loss}</span> | <span style='color:#00ffcc'>TP {target_price}</span></div>"
+            stop_loss, target_price, risk_pct, reward_pct, rrr = calculate_trade_plan(h)
+            
+            # Execution Plan (Professional)
+            plan_html = (
+                f"<div style='margin-top:8px; padding:8px; border-top:1px dashed #333; font-family:JetBrains Mono; font-size:10px;'>"
+                f"🛡️ <b>EXECUTION STRATEGY (RRR 1:{rrr}):</b><br>"
+                f"• ENTRY: {int(last['Close'])}<br>"
+                f"• STOP LOSS: <span style='color:#ff4d4d'>{stop_loss} (-{risk_pct}%)</span><br>"
+                f"• TAKE PROFIT: <span style='color:#00ffcc'>{target_price} (+{reward_pct}%)</span>"
+                f"</div>"
+            )
             thesis_points.append(plan_html)
 
             results.append({
@@ -353,16 +368,16 @@ def scan_market(macro_data):
         except: continue
     return results
 
-# --- CHART RENDERING (FIXED: STOCHASTIC 10,5,5 REPLACES RSI) ---
+# --- CHART RENDERING (FIXED: CLEAN & NO GHOSTING) ---
 def render_chart(target):
     df_raw = target['RAW_DATA'].tail(60) 
     
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.6, 0.2, 0.2])
     
-    # 1. CANDLESTICK (CLEAN - NO MA20 LINE)
+    # 1. CANDLESTICK
     fig.add_trace(go.Candlestick(x=df_raw.index, open=df_raw['Open'], high=df_raw['High'], low=df_raw['Low'], close=df_raw['Close'], name=target['SYMBOL'], increasing_line_color='#00ffcc', decreasing_line_color='#ff0055'), row=1, col=1)
     
-    # --- TRENDLINES (2 GARIS TEGAS ONLY) ---
+    # --- TRENDLINES ---
     df_50 = df_raw.tail(50)
     if len(df_50) >= 2:
         idx_max = df_50['High'].idxmax() 
@@ -383,16 +398,13 @@ def render_chart(target):
             val_next_min = sub_after_min['Low'].min()
             fig.add_trace(go.Scatter(x=[idx_min, idx_next_min], y=[val_min, val_next_min], mode='lines', line=dict(color='#00ffcc', width=2), name='Sup'), row=1, col=1)
 
-    # 3. VOLUME (CLEAN - NO LINES)
+    # 3. VOLUME
     fig.add_trace(go.Bar(x=df_raw.index, y=df_raw['Volume'], marker_color=['#00ffcc' if r>=o else '#ff0055' for r,o in zip(df_raw['Close'],df_raw['Open'])], name='Vol'), row=2, col=1)
     
-    # 4. STOCHASTIC (10, 5, 5) - REPLACING RSI
-    # %K Line (Blue)
+    # 4. STOCHASTIC
     fig.add_trace(go.Scatter(x=df_raw.index, y=df_raw['Stoch_K'], line=dict(color='#0088ff', width=1.5), name='%K'), row=3, col=1)
-    # %D Line (Orange - Signal)
     fig.add_trace(go.Scatter(x=df_raw.index, y=df_raw['Stoch_D'], line=dict(color='#ffaa00', width=1.5), name='%D'), row=3, col=1)
     
-    # Limits
     fig.add_hline(y=20, line_dash="dot", line_color="rgba(255,255,255,0.3)", row=3, col=1)
     fig.add_hline(y=80, line_dash="dot", line_color="rgba(255,255,255,0.3)", row=3, col=1)
 
@@ -405,13 +417,12 @@ def render_chart(target):
         xaxis_rangeslider_visible=False 
     )
     
-    # Remove ALL Gridlines & Extra Axes
     fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, row=2, col=1) 
     fig.update_xaxes(showgrid=False, row=3, col=1)
     fig.update_yaxes(showgrid=False, row=1, col=1)
     fig.update_yaxes(showgrid=False, showticklabels=False, row=2, col=1) 
-    fig.update_yaxes(showgrid=False, range=[0, 100], row=3, col=1) # Fix Stochastic Scale
+    fig.update_yaxes(showgrid=False, range=[0, 100], row=3, col=1) 
     
     return fig
 
