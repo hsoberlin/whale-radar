@@ -322,3 +322,4 @@ if data:
             </div>''', unsafe_allow_html=True)
 
 st.caption("PREDATOR QUANTUM DAILY TRADE | INSTITUTIONAL GATEKEEPER | 2026 WALL STREET STANDARD")
+
