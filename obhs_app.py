@@ -1,7 +1,6 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import warnings
 import feedparser
 import re
@@ -11,76 +10,47 @@ from streamlit_autorefresh import st_autorefresh
 import urllib.parse
 
 # 1. Dashboard Configuration
-st.set_page_config(page_title="PREDATOR QUANTUM DAILY TRADE", layout="wide")
+st.set_page_config(page_title="PREDATOR QUANTUM v2.8", layout="wide")
 warnings.filterwarnings("ignore")
 
 # High Frequency Refresh: 60 Seconds
-st_autorefresh(interval=60000, key="quantum_daily_sync")
+st_autorefresh(interval=60000, key="quantum_auto_link")
 
-# --- ULTRA-PREMIUM TERMINAL UI ---
+# --- PREMIUM GLASSMORPHISM UI ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;600;900&display=swap');
-    
-    .stApp { background-color: #020406; color: #ffffff; }
-    
+    .stApp { background: radial-gradient(circle at top right, #0a0e1a, #05070a); color: #ffffff; }
     .header-container {
-        padding: 20px; background: rgba(0, 255, 204, 0.02);
-        border-radius: 10px; border: 1px solid rgba(0, 255, 204, 0.1);
-        text-align: center; margin-bottom: 20px;
+        padding: 20px; background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(10px);
+        border-radius: 15px; border: 1px solid rgba(0, 255, 204, 0.1); margin-bottom: 25px; text-align: center;
     }
-    
     .header-title {
-        font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 50px !important;
-        background: linear-gradient(90deg, #00ffcc, #ff0055);
-        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: 8px;
+        font-family: 'Orbitron', sans-serif !important; font-weight: 900; font-size: 50px !important;
+        background: linear-gradient(90deg, #00ffcc, #0099ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        text-shadow: 0 0 30px rgba(0, 255, 204, 0.3); letter-spacing: 8px; margin-bottom: 0px;
     }
-    
     .status-bar {
-        background: #0a0e14; border-left: 5px solid #ff0055;
+        background: rgba(0, 255, 204, 0.05); border-left: 5px solid #00ffcc;
         padding: 10px 20px; font-family: 'JetBrains Mono', monospace;
-        font-weight: 800; color: #ff0055; font-size: 13px; margin-bottom: 10px;
+        font-weight: 800; color: #00ffcc; font-size: 14px; margin-bottom: 30px;
     }
-
-    .blink {
-        animation: blinker 1.5s linear infinite;
-        color: #00ffcc;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 12px;
-        margin-bottom: 20px;
+    .metric-container {
+        background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px; padding: 25px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
     }
-    @keyframes blinker { 50% { opacity: 0; } }
-
+    .metric-lbl { color: #8b949e; font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; }
+    .metric-val { font-family: 'Orbitron', sans-serif; font-size: 35px; font-weight: 900; color: #00ffcc; margin-top: 10px; }
     .news-box {
-        background: #0a0e14; border-left: 3px solid #ff4d4d;
-        padding: 12px; margin-bottom: 10px; border-radius: 4px;
-        transition: 0.3s;
+        background: rgba(255, 255, 255, 0.02); border-radius: 10px; border-left: 4px solid #ff4d4d;
+        padding: 15px; margin-bottom: 12px; transition: 0.2s;
     }
-    .news-box:hover { border-left: 3px solid #00ffcc; background: #111a21; }
-    
-    .news-topic-header {
-        font-family: 'Orbitron', sans-serif; font-weight: 800;
-        font-size: 11px; color: #00ffcc !important; text-transform: uppercase;
-    }
-    
-    .news-text { font-family: 'Inter', sans-serif; font-size: 12px; color: #e0e0e0; }
-    .news-text a { text-decoration: none; color: inherit; }
-    
-    .thesis-box {
-        background: rgba(255, 0, 85, 0.03); border: 1px dashed rgba(255, 0, 85, 0.3);
-        padding: 15px; border-radius: 8px; margin-top: 5px;
-    }
-
-    .risk-note-box {
-        background: linear-gradient(135deg, rgba(255,0,85,0.15) 0%, rgba(2,4,6,1) 100%);
-        border: 1px solid #ff0055;
-        padding: 20px;
-        border-radius: 5px;
-        margin-top: 25px;
-        font-family: 'Inter', sans-serif;
-    }
+    .news-box:hover { background: rgba(255, 255, 255, 0.05); border-left: 4px solid #00ffcc; }
+    .news-topic-header { font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 12px; color: #00ffcc !important; }
+    .news-text { font-family: 'Inter', sans-serif; font-size: 12px; color: #e6edf3; margin-top: 5px; }
+    /* Style link agar tidak bergaris bawah kecuali di-hover */
+    .news-text a { text-decoration: none; color: #e6edf3; transition: 0.2s; }
+    .news-text a:hover { color: #00ffcc; text-shadow: 0 0 10px rgba(0, 255, 204, 0.5); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -119,45 +89,31 @@ RSS_LINKS = [
     "https://www.google.co.id/alerts/feeds/16876890487441803706/8676695815866551512"
 ]
 
-# --- ANALYTICS ENGINE ---
-def build_flow_features(df):
-    df = df.copy()
-    df['chg_pct'] = df['Close'].pct_change()
-    df['range_pct'] = (df['High'] - df['Low']) / df['Close']
-    df['value'] = df['Volume'] * df['Close']
-    df['vol_ma5'] = df['Volume'].rolling(5).mean()
-    df['vol_ma50'] = df['Volume'].rolling(50).mean()
-    df['vol_ma'] = df['Volume'].rolling(20, min_periods=5).mean()
-    df['vol_power'] = df['Volume'] / df['vol_ma']
-    df['val_ma'] = df['value'].rolling(20, min_periods=5).mean()
-    return df
-
-def calc_signals(df):
-    absorption = (df['Volume'] > 1.2 * df['vol_ma']) & (df['range_pct'] < 0.015)
-    persistence = (df['value'] > 1.1 * df['val_ma']) & (df['Low'] >= df['Low'].shift(1))
-    inefficiency = (df['value'] > 1.2 * df['val_ma']) & (df['chg_pct'].abs() < 0.008)
-    return absorption, persistence, inefficiency
-
 def fetch_intel():
     intel_map, intel_list, news_tickers = {}, [], set()
-    topic_map = {
-        "AKUISISI": "AKUISISI", "RIGHTS ISSUE": "RIGHTS", "DANANTARA": "DANANTARA", 
-        "MERGER": "MERGER", "EKSPANSI": "EKSPANSI", "INVESTASI": "INVESTASI",
-        "KONTRAK": "KONTRAK BARU", "PRAJOGO": "KONGLO_PRAJOGO", "SALIM": "KONGLO_SALIM",
-        "BAKRIE": "KONGLO_BAKRIE"
-    }
+    topic_map = {"AKUISISI": "AKUISISI", "RIGHTS ISSUE": "RIGHTS", "DANANTARA": "DANANTARA", "ASSET": "ASSET"}
+    now = datetime.now()
+    seen_news = set()
+
     for url in RSS_LINKS:
         try:
             feed = feedparser.parse(url)
             for entry in feed.entries:
-                title = entry.title.replace('<b>','').replace('</b>','').strip()
-                tickers = re.findall(r'\b[A-Z]{4}\b', title.upper())
-                topic = next((v for k, v in topic_map.items() if k in title.upper()), "STRATEGIS")
-                for t in set(tickers):
-                    if t not in ["IHSG", "IDX", "LQ45"]:
-                        intel_map[t] = {"title": title, "topic": topic}
-                        news_tickers.add(t)
-                intel_list.append({"TOPIC": topic, "NEWS": title})
+                clean_title = entry.title.replace('<b>','').replace('</b>','').strip()
+                if clean_title in seen_news: continue
+                
+                title_upper = clean_title.upper()
+                tickers = re.findall(r'\b[A-Z]{4}\b', title_upper)
+                
+                detected_topic = next((label for key, label in topic_map.items() if key in title_upper), "STRATEGIS")
+                
+                for t in tickers:
+                    if t not in ["IHSG", "LQ45", "BEII", "IDX"]:
+                        intel_map[t] = clean_title
+                        news_tickers.add(t) 
+                
+                intel_list.append({"TOPIC": detected_topic, "NEWS": clean_title, "TIME": entry.get('published', 'RECENT')})
+                seen_news.add(clean_title)
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
@@ -169,122 +125,70 @@ def scan_market():
     for ticker in combined_targets:
         try:
             s = yf.Ticker(f"{ticker}.JK")
-            h = s.history(period="3mo", interval="1d") 
-            if len(h) < 50: continue
-            h = build_flow_features(h)
-            last = h.iloc[-1]
-            if not (last['vol_ma5'] > 2 * last['vol_ma50']): continue
-
-            abs_s, per_s, ine_s = calc_signals(h)
-            last_vp = last['vol_power']
-            is_acc = (abs_s.astype(int) + per_s.astype(int) + ine_s.astype(int)).rolling(6).sum().iloc[-1] >= 1
-            if not is_acc and last_vp < 1.5: continue
-
-            c, gain, val_b = last['Close'], last['chg_pct'] * 100, last['value'] / 1e9
-            if val_b < 0.3: continue 
-
-            score = 15
-            thesis_narrative = []
-            if last['vol_ma5'] > 3 * last['vol_ma50']:
-                score += 35
-                thesis_narrative.append("Deteksi anomali volume institusi masif")
-            else:
-                score += 15
-                thesis_narrative.append("Aktivitas volume di atas rata-rata")
-
-            if last_vp > 2:
-                score += 20
-                thesis_narrative.append(f"kekuatan daya beli melonjak {round(last_vp,1)}x")
+            h = s.history(period="50d")
+            if len(h) < 10: continue
             
-            if ticker in intel_map: 
-                score += 25
-                thesis_narrative.append("terkonfirmasi katalis strategis")
-                
-            if abs_s.iloc[-1] or per_s.iloc[-1]: 
-                score += 15
-                thesis_narrative.append("serta menunjukkan persistensi akumulasi whale")
+            v_ma50 = h['Volume'].mean()
+            v_today = h['Volume'].iloc[-1]
+            c = h['Close'].iloc[-1]
+            p = h['Close'].iloc[-2]
+            gain = ((c - p) / p) * 100
+            val_b = (v_today * c) / 1e9
+            p_factor = v_today / v_ma50 if v_ma50 > 0 else 1
+            
+            if val_b < 1.0 or gain < -5: continue 
+            
+            score = 10
+            if ticker in intel_map: score += 30 
+            if p_factor > 1.5: score += 20
+            if gain > 3: score += 20
+            if val_b > 10: score += 20
 
-            final_thesis = ", ".join(thesis_narrative).capitalize() + "."
-            porto = "15-20% (Aggressive)" if score >= 80 else ("10% (Medium)" if score >= 60 else "2-5% (Speculative)")
+            group_info = master_afiliasi.get(ticker, f"⭐ NEWS: {intel_map.get(ticker, 'Active Sentiment')[:40]}...")
 
             results.append({
-                "SYMBOL": ticker, "CONF": max(0, min(score, 100)), "VOL_POWER": round(last_vp, 2),
-                "FLOW_VELOCITY": round(last['vol_ma5']/last['vol_ma50'], 2), "PRICE": int(c) if c >= 1 else c,
-                "CHG%": round(gain, 2), "VALUE": round(val_b, 1), "GROUP": master_afiliasi.get(ticker, "EXTERNAL / DISCOVERY"),
-                "THESIS": final_thesis, "PORTO": porto, "NEWS_INTEL": intel_map.get(ticker, {}).get('title', 'No direct news')
+                "SYMBOL": ticker, "CONF": max(0, min(score, 100)), "PRICE": int(c) if c >= 1 else c, 
+                "CHG%": round(gain, 2), "VALUE": round(val_b, 1), "PWR": round(p_factor, 1), 
+                "GROUP / SENTIMEN": group_info
             })
         except: continue
     return results
 
 # --- INTERFACE RENDERING ---
-st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM DAILY TRADE</div></div>', unsafe_allow_html=True)
-st.markdown(f'<div class="status-bar">● GATEKEEPER ACTIVE | {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
-
-loading_placeholder = st.empty()
-loading_placeholder.markdown('<div class="blink">SYSTEM SCANNING: ANALYZING INSTITUTIONAL ORDER FLOW...</div>', unsafe_allow_html=True)
+st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="status-bar">● RADAR SYNCED WITH NEWS FEED | {datetime.now().strftime("%H:%M:%S")}</div>', unsafe_allow_html=True)
 
 data = scan_market()
-intel_map, news_feed, _ = fetch_intel()
-loading_placeholder.empty()
+_, news_feed, _ = fetch_intel()
 
 if data:
     df = pd.DataFrame(data).sort_values(by="CONF", ascending=False)
-    col_main, col_news = st.columns([2.1, 0.9])
-    
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.markdown(f'<div class="metric-container"><span class="metric-lbl">ACTIVE SIGNALS</span><br><span class="metric-val">{len(df)}</span></div>', unsafe_allow_html=True)
+    with c2: st.markdown(f'<div class="metric-container"><span class="metric-lbl">TOTAL VALUE</span><br><span class="metric-val">{df["VALUE"].sum():.1f}B</span></div>', unsafe_allow_html=True)
+    with c3: st.markdown(f'<div class="metric-container"><span class="metric-lbl">TOP CONFIDENCE</span><br><span class="metric-val">{df["CONF"].max()}%</span></div>', unsafe_allow_html=True)
+    with c4: st.markdown(f'<div class="metric-container"><span class="metric-lbl">HOT NEWS UNITS</span><br><span class="metric-val">{len(df[df["GROUP / SENTIMEN"].str.contains("⭐")])}</span></div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_main, col_news = st.columns([1.8, 1.2])
     with col_main:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📡 REAL-TIME WHALE TRACKER</h3>", unsafe_allow_html=True)
-        st.dataframe(df[["SYMBOL", "CONF", "VOL_POWER", "FLOW_VELOCITY", "PRICE", "CHG%", "VALUE", "PORTO"]], column_config={
+        st.markdown("<h2 style='color:#00ffcc; font-family:Orbitron; font-size: 20px;'>📡 INTEGRATED TRACKER (MARKET + NEWS)</h2>", unsafe_allow_html=True)
+        st.dataframe(df, column_config={
             "CONF": st.column_config.ProgressColumn("CONF", min_value=0, max_value=100, format="%d%%"),
-            "VOL_POWER": st.column_config.NumberColumn("VOL PWR", format="%.2fx ⚡"),
-            "FLOW_VELOCITY": st.column_config.NumberColumn("FLOW VELOCITY", format="%.2fx"),
-            "VALUE": st.column_config.NumberColumn("VAL (B)", format="%.1fB"),
-            "PORTO": st.column_config.TextColumn("ALLOC")
-        }, use_container_width=True, hide_index=True, height=400)
-
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px; margin-top:30px;'>📝 STRATEGIC INVESTMENT ANALYSIS</h3>", unsafe_allow_html=True)
-        agg_list = []
-        for _, row in df.head(5).iterrows():
-            if "Aggressive" in row['PORTO']: agg_list.append(row)
-            st.markdown(f"""
-            <div class="thesis-box">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="color:#ff0055; font-weight:bold; font-size:18px;">{row['SYMBOL']}</span>
-                    <span style="color:#00ffcc; font-family: 'JetBrains Mono'; font-size: 12px;">{row['PORTO']}</span>
-                </div>
-                <div style="color:#8b949e; font-size: 11px; margin-bottom: 8px;">Asset Group: {row['GROUP']} | Velocity Index: {row['FLOW_VELOCITY']}x</div>
-                <div style="color:#e0e0e0; font-family: 'Inter'; font-size: 13px; line-height: 1.6;"><b>ANALYSIS:</b> {row['THESIS']}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # --- DYNAMIC AGGRESSIVE COMMAND CENTER (UPDATED) ---
-        if agg_list:
-            agg_tickers_html = ""
-            for item in agg_list:
-                news_snippet = f" | <i style='color:#ffcc00;'>Intel: {item['NEWS_INTEL']}</i>" if item['NEWS_INTEL'] != 'No direct news' else ""
-                agg_tickers_html += f"<li><b style='color:#00ffcc;'>[{item['SYMBOL']}]</b> Group: {item['GROUP']} | Flow: {item['FLOW_VELOCITY']}x {news_snippet}</li>"
-
-            st.markdown(f"""
-            <div class="risk-note-box">
-                <div style="font-family: 'Orbitron'; color: #ff0055; font-size: 15px; font-weight: 900; margin-bottom: 12px; letter-spacing: 2px; border-bottom: 1px solid rgba(255,0,85,0.3); padding-bottom: 5px;">
-                    ⚠️ INSTITUTIONAL PRIORITY: AGGRESSIVE MONITORING LIST
-                </div>
-                <div style="color: #e0e0e0; font-size: 12px; line-height: 1.8;">
-                    <ul style="padding-left: 15px; margin-bottom: 15px;">
-                        {agg_tickers_html}
-                    </ul>
-                    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 10px 0;">
-                    <div style="font-weight: 800; color: #ff4d4d; margin-bottom: 5px;">OPERATIONAL DIRECTIVE:</div>
-                    1. <b>CONVICTION CHECK:</b> Semua ticker di atas menunjukkan anomali volume >300% dari rata-rata 50 hari. Validasi katalis (Intel) adalah prioritas utama sebelum entri.<br>
-                    2. <b>LIQUIDITY RISK:</b> Pastikan <i>Value Transacted</i> tetap terjaga di atas level saat ini untuk menghindari <i>liquidity trap</i> pada fase distribusi.<br>
-                    3. <b>EXECUTION:</b> Gunakan metode <i>Pyramiding</i>; entri awal 50%, tambah posisi hanya jika harga bertahan di atas <i>VWAP</i> sesi berjalan.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
+            "VALUE": st.column_config.NumberColumn("VALUE", format="%.1fB"),
+        }, use_container_width=True, hide_index=True, height=700)
     with col_news:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ffffff; font-size:18px;'>💡 STRATEGIC INTEL</h3>", unsafe_allow_html=True)
-        for item in news_feed[:12]:
-            q = urllib.parse.quote(item['NEWS'])
-            st.markdown(f'''<div class="news-box"><div class="news-topic-header">{item["TOPIC"]}</div><div class="news-text"><a href="https://www.google.com/search?q={q}" target="_blank">{item["NEWS"]}</a></div></div>''', unsafe_allow_html=True)
-
-st.caption("PREDATOR QUANTUM DAILY TRADE | INSTITUTIONAL GATEKEEPER | 2026 WALL STREET STANDARD")
+        st.markdown("<h2 style='color:#ff4d4d; font-family:Orbitron; font-size: 18px;'>💡 LIVE INTEL STREAM</h2>", unsafe_allow_html=True)
+        for item in news_feed[:15]:
+            # KOREKSI DISINI: Membuat link dinamis ke Google Search berdasarkan judul berita
+            search_q = urllib.parse.quote(item['NEWS'])
+            google_link = f"https://www.google.com/search?q={search_q}"
+            
+            st.markdown(f'''
+                <div class="news-box">
+                    <div class="news-topic-header">{item["TOPIC"]}</div>
+                    <div class="news-text">
+                        <a href="{google_link}" target="_blank">{item["NEWS"]}</a>
+                    </div>
+                </div>
+            ''', unsafe_allow_html=True)
