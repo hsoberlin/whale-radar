@@ -9,7 +9,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 import urllib.parse
-from collections import Counter
 
 # 1. Dashboard Configuration
 st.set_page_config(page_title="PREDATOR QUANTUM DAILY TRADE", layout="wide")
@@ -226,9 +225,13 @@ def build_flow_features(df):
     df['vol_ma20'] = df['Volume'].rolling(20, min_periods=5).mean()
     df['vol_power'] = df['Volume'] / df['vol_ma20']
     
+    # --- TRENDS & SMMA ---
     df['MA20'] = df['Close'].rolling(20).mean()
     df['MA20_Slope'] = df['MA20'] > df['MA20'].shift(1)
     df['Trend_State'] = np.where(df['Close'] > df['MA20'], "BULLISH", "BEARISH")
+    
+    # Smoothed Moving Average (SMMA) 200 via Exponential formulation
+    df['SMMA_200'] = df['Close'].ewm(alpha=1/200, adjust=False).mean()
     
     # --- STOCHASTIC 10, 5, 5 CALCULATION ---
     low_min = df['Low'].rolling(10).min()
@@ -310,32 +313,56 @@ def scan_market(macro_data):
             h = build_flow_features(df)
             if h.iloc[-1].isnull().any(): continue
             last = h.iloc[-1]
+            prev = h.iloc[-2] if len(h) > 1 else last
             
-            # --- FILTERS ---
+            # --- NEW: EXPLOSIVE VOLUME BREAKOUT FILTERS ---
+            is_volume_explosion = last['Volume'] > (last['vol_ma20'] * 4)
+            is_strong_bull = (last['Close'] > last['Open']) and (last['chg_pct'] >= 0.10)
+            is_stoch_momentum = last['Stoch_K'] > last['Stoch_D']
+            is_smma_cross = (last['Close'] > last['SMMA_200']) and (prev['Close'] <= prev['SMMA_200'])
+            
+            is_vol_breakout = is_volume_explosion and is_strong_bull
+
+            # --- EXISTING FILTERS ---
             is_uptrend = last['Close'] > last['MA20']
             is_reversal = (last['Close'] < last['MA20']) and (last['Stoch_K'] < 20)
-            if not (is_uptrend or is_reversal): continue
             
-            is_vol_spike = last['vol_ma5'] > 1.2 * last['vol_ma50']
+            if not (is_uptrend or is_reversal or is_vol_breakout): continue
+            
+            is_vol_spike_std = last['vol_ma5'] > 1.2 * last['vol_ma50']
             has_news = ticker_raw in intel_map
-            if not (is_vol_spike or has_news): continue
+            
+            if not (is_vol_spike_std or has_news or is_vol_breakout): continue
             
             # --- SCORING & THESIS ---
             score = 10
             thesis_points = []
-            strategy_tag = "TREND FOLLOWING" if is_uptrend else "BOTTOM FISHING"
+            
+            if is_vol_breakout:
+                strategy_tag = "VOL BREAKOUT"
+                score += 50
+                thesis_points.append(f"🔥 <b>EXPLOSIVE BREAKOUT:</b> Volume {last['vol_power']:.1f}x Avg with +{last['chg_pct']*100:.1f}% surge.")
+                if is_smma_cross:
+                    score += 20
+                    thesis_points.append("🎯 <b>SMMA 200 CROSSOVER:</b> Major long-term trend reversal validated.")
+                if is_stoch_momentum:
+                    score += 10
+                    thesis_points.append("⚡ <b>MOMENTUM UP:</b> Stochastic %K memotong tajam ke atas %D.")
+            else:
+                strategy_tag = "TREND FOLLOWING" if is_uptrend else "BOTTOM FISHING"
             
             # Volume Analysis (Professional)
             vol_growth = (last['vol_power'] - 1) * 100
-            if last['vol_power'] > 3.0: 
-                score += 40
-                thesis_points.append(f"🌊 <b>INSTITUTIONAL ACCUMULATION:</b> High conviction volume spike (+{vol_growth:.0f}% vs Avg).")
-            elif last['vol_power'] > 1.2: 
-                score += 20
-                thesis_points.append(f"💧 <b>LIQUIDITY FLOW:</b> Consistent accumulation activity (+{vol_growth:.0f}% vs Avg).")
+            if not is_vol_breakout:
+                if last['vol_power'] > 3.0: 
+                    score += 40
+                    thesis_points.append(f"🌊 <b>INSTITUTIONAL ACCUMULATION:</b> High conviction volume spike (+{vol_growth:.0f}% vs Avg).")
+                elif last['vol_power'] > 1.2: 
+                    score += 20
+                    thesis_points.append(f"💧 <b>LIQUIDITY FLOW:</b> Consistent accumulation activity (+{vol_growth:.0f}% vs Avg).")
             
             # Technical Analysis (Professional)
-            if is_uptrend: 
+            if is_uptrend and not is_vol_breakout: 
                 score += 20
                 thesis_points.append("📈 <b>MARKET STRUCTURE:</b> Bullish phase confirmed (Price > MA20).")
             if last['MA20_Slope']: 
@@ -343,7 +370,7 @@ def scan_market(macro_data):
                 thesis_points.append("🚀 <b>MOMENTUM VELOCITY:</b> Accelerating trend strength detected.")
             if has_news: 
                 score += 20
-                thesis_points.append("📰 <b>CATALYST DRIVER:</b> Significant corporate action/news detected.")
+                thesis_points.append(f"📰 <b>CATALYST DRIVER:</b> Significant corporate action/news detected ({intel_map[ticker_raw]['topic']}).")
             
             stop_loss, target_price, risk_pct, reward_pct, rrr = calculate_trade_plan(h)
             
@@ -377,6 +404,9 @@ def render_chart(target):
     # 1. CANDLESTICK
     fig.add_trace(go.Candlestick(x=df_raw.index, open=df_raw['Open'], high=df_raw['High'], low=df_raw['Low'], close=df_raw['Close'], name=target['SYMBOL'], increasing_line_color='#00ffcc', decreasing_line_color='#ff0055'), row=1, col=1)
     
+    # --- SMMA 200 LINE ---
+    fig.add_trace(go.Scatter(x=df_raw.index, y=df_raw['SMMA_200'], mode='lines', line=dict(color='#9932CC', width=1.5, dash='dash'), name='SMMA 200'), row=1, col=1)
+
     # --- TRENDLINES ---
     df_50 = df_raw.tail(50)
     if len(df_50) >= 2:
