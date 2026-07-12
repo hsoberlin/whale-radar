@@ -1,4 +1,4 @@
-code = """import streamlit as st
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 st_autorefresh(interval=60000, key="quantum_daily_sync")
 
 # --- ULTRA-PREMIUM TERMINAL UI ---
-st.markdown('''
+st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;600;900&display=swap');
     
@@ -93,7 +93,7 @@ st.markdown('''
         font-family: 'JetBrains Mono' !important; border-bottom: 1px solid #222 !important;
     }
     </style>
-    ''', unsafe_allow_html=True)
+""")
 
 # --- DATABASE ENGINE ---
 master_afiliasi = {
@@ -255,7 +255,7 @@ def fetch_intel():
             feed = feedparser.parse(url)
             for entry in feed.entries:
                 title = entry.title.replace('<b>','').replace('</b>','').strip()
-                tickers = re.findall(r'\\b[A-Z]{4}\\b', title.upper())
+                tickers = re.findall(r'\b[A-Z]{4}\b', title.upper())
                 topic = "STRATEGIS"
                 for k, v in topic_map.items():
                     if k in title.upper(): topic = v; break
@@ -456,8 +456,3 @@ if data:
         st.markdown('</div>', unsafe_allow_html=True)
 else:
     st.warning("SCAN COMPLETE. NO ASSETS FOUND MATCHING EXCLUSIVE INSTITUTIONAL CRITERIA.")
-"""
-
-with open('/mnt/data/quantum_screener_strict_v2.py', 'w') as f:
-    f.write(code)
-print("File saved successfully.")
