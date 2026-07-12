@@ -93,7 +93,7 @@ st.markdown("""
         font-family: 'JetBrains Mono' !important; border-bottom: 1px solid #222 !important;
     }
     </style>
-""")
+""", unsafe_allow_html=True)
 
 # --- DATABASE ENGINE ---
 master_afiliasi = {
