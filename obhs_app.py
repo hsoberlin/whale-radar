@@ -97,12 +97,10 @@ st.markdown("""
 
 # --- DATABASE ENGINE ---
 master_afiliasi = {
-    # --- 1. GENG BARITO (PRAJOGO PANGESTU) ---
     "BREN": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", 
     "CUAN": "PRAJOGO PANGESTU", "BRPT": "PRAJOGO PANGESTU", 
     "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
     "CDIA": "PRAJOGO PANGESTU", "GZCO": "PRAJOGO PANGESTU",
-    # --- 2. GENG BAKRIE (THE LEGENDS) ---
     "BUMI": "BAKRIE & SALIM",   "BRMS": "BAKRIE GROUP", 
     "ENRG": "BAKRIE GROUP",     "DEWA": "BAKRIE GROUP", 
     "BNBR": "BAKRIE GROUP",     "UNSP": "BAKRIE GROUP",
@@ -110,49 +108,38 @@ master_afiliasi = {
     "JGLE": "BAKRIE GROUP",     "ALII": "BAKRIE GROUP", 
     "ELTY": "BAKRIE GROUP",     "BTEL": "BAKRIE GROUP",
     "VKTR": "BAKRIE GROUP",
-    # --- 3. GENG SALIM (THE TITANS) ---
     "AMMN": "SALIM & PANIGORO", "INDF": "SALIM GROUP", 
     "ICBP": "SALIM GROUP",      "LSIP": "SALIM GROUP", 
     "SIMP": "SALIM GROUP",      "META": "SALIM GROUP", 
     "ROTI": "SALIM GROUP",      "IMAS": "SALIM GROUP",
     "DNET": "SALIM GROUP",      "MEDC": "SALIM & PANIGORO",
-    # --- 4. GENG SINAR MAS (THE GIANTS) ---
     "DSSA": "SINAR MAS",        "BSDE": "SINAR MAS", 
     "INKP": "SINAR MAS",        "TKIM": "SINAR MAS", 
     "SMMA": "SINAR MAS",        "DUTI": "SINAR MAS",
     "SMAR": "SINAR MAS",        "FREN": "SINAR MAS",
     "DMAS": "SINAR MAS",
-    # --- 5. GENG AGUAN / AGUNG SEDAYU (PIK 2) ---
     "PANI": "AGUAN (PIK 2)",    "MKPI": "AGUAN GROUP",
     "ASRI": "AGUAN GROUP",      "CBDK": "AGUAN (SEDAYU)",
-    # --- 6. GENG ADARO / BOY THOHIR ---
     "ADRO": "BOY THOHIR",       "ADMR": "BOY THOHIR", 
     "ESSA": "BOY THOHIR",       "MBMA": "BOY THOHIR", 
     "MDKA": "BOY THOHIR (SANDI)",
-    # --- 7. GENG TRIPUTRA (TP RACHMAT) ---
     "DRMA": "TP RACHMAT",       "TAPG": "TP RACHMAT", 
     "DSNG": "TP RACHMAT",       "ASSA": "TP RACHMAT", 
     "ASLC": "TP RACHMAT",
-    # --- 8. GENG HAPPY HAPSORO ---
     "RAJA": "HAPPY HAPSORO",    "CBRE": "HAPPY HAPSORO", 
     "PSAB": "HAPPY HAPSORO",    "MINA": "HAPPY HAPSORO",
     "OASA": "HAPPY HAPSORO",
-    # --- 9. GENG TOMY WINATA (ARTHA GRAHA) ---
     "JIHD": "TOMY WINATA",      "SCBD": "TOMY WINATA",
     "TINY": "TOMY WINATA",
-    # --- 10. GENG MNC (HARY TANOE) ---
     "KPIG": "MNC GROUP",        "BHIT": "MNC GROUP",
     "MNCN": "MNC GROUP",        "IPTV": "MNC GROUP",
     "BABP": "MNC GROUP",        "BCAP": "MNC GROUP",
-    # --- 11. GENG LIPPO (RIADY) ---
     "LPKR": "LIPPO GROUP",      "LPPF": "LIPPO GROUP",
     "MLPL": "LIPPO GROUP",      "MPPA": "LIPPO GROUP",
     "SILO": "LIPPO GROUP",
-    # --- 12. TECH & NEW ECONOMY ---
     "GOTO": "GOTO / TECH",      "EMTK": "EMTEK GROUP",
     "SCMA": "EMTEK GROUP",      "BUKA": "BUKALAPAK",
     "ARTO": "JAGO (GOTO)",
-    # --- 13. BUMN (THE STATE MOVERS) ---
     "BBRI": "STATE OWNED",      "BMRI": "STATE OWNED", 
     "BBNI": "STATE OWNED",      "BBTN": "STATE OWNED", 
     "BRIS": "STATE OWNED",      "TLKM": "STATE OWNED", 
@@ -267,7 +254,7 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- BULK SCANNER ENGINE (NEW STRICT RULES ONLY) ---
+# --- BULK SCANNER ENGINE (REVISED LOGIC) ---
 def scan_market(macro_data):
     results = []
     intel_map, _, news_tickers = fetch_intel()
@@ -298,22 +285,22 @@ def scan_market(macro_data):
             prev = h.iloc[-2]
             
             # ---------------------------------------------------------
-            # 5 EXCLUSIVE PARAMETERS
+            # 5 EXCLUSIVE PARAMETERS (FLEXIBLE FOR LIVE MARKET)
             # ---------------------------------------------------------
             # 1. volume ma5 >= ma10
             cond1 = last['vol_ma5'] >= last['vol_ma10']
             
-            # 2. value > 50,000,000,000 (50 Miliar)
-            cond2 = last['value'] > 50_000_000_000
+            # 2. value > 50 Miliar (Bisa value hari ini ATAU kemarin jika market sedang live)
+            cond2 = (last['value'] > 50_000_000_000) or (prev['value'] > 50_000_000_000)
             
-            # 3. Close crosses above SMMA 200
-            cond3 = (last['Close'] > last['SMMA_200']) and (prev['Close'] <= prev['SMMA_200'])
+            # 3. Close > SMMA 200 (Saham SUDAH berada di atas SMMA 200 / Uptrend Jangka Panjang)
+            cond3 = last['Close'] > last['SMMA_200']
             
             # 4. Parameter: Stoch (10, 5, 5) dengan kondisi %K > %D 
             cond4 = last['Stoch_K'] > last['Stoch_D']
             
-            # 5. Volume > (SMA Volume 20 * 4)
-            cond5 = last['Volume'] > (last['vol_ma20'] * 4)
+            # 5. Volume > (SMA Volume 20 * 4) (Ledakan volume bisa terjadi hari ini ATAU hari kemarin)
+            cond5 = (last['Volume'] > (last['vol_ma20'] * 4)) or (prev['Volume'] > (prev['vol_ma20'] * 4))
             
             # Evaluate all conditions
             if not (cond1 and cond2 and cond3 and cond4 and cond5): 
@@ -325,10 +312,10 @@ def scan_market(macro_data):
             strategy_tag = "INSTITUTIONAL BREAKOUT"
             thesis_points = []
             
-            thesis_points.append(f"🔥 <b>VOLUME EXPLOSION:</b> Vol {last['vol_power']:.1f}x dari Avg20 & Volume MA5 telah menyilang ke atas MA10.")
-            thesis_points.append(f"💰 <b>HIGH LIQUIDITY:</b> Nilai transaksi meledak di atas 50 Miliar (Current: {last['value']/1e9:.1f} Miliar).")
-            thesis_points.append("🎯 <b>SMMA 200 CROSSOVER:</b> Harga resmi menembus benteng Moving Average jangka panjang (SMMA 200).")
-            thesis_points.append("⚡ <b>MOMENTUM CONFIRMED:</b> Stoch %K memotong tajam di atas %D.")
+            thesis_points.append(f"🔥 <b>VOLUME EXPLOSION:</b> Terdeteksi ledakan Volume ekstrem (>4x Avg20) & MA5 menembus MA10.")
+            thesis_points.append(f"💰 <b>HIGH LIQUIDITY:</b> Nilai transaksi harian sangat masif (>Rp50 Miliar).")
+            thesis_points.append("🎯 <b>SMMA 200 SUPPORT:</b> Harga terkonfirmasi kuat berada di atas Moving Average 200 (Golden Cross).")
+            thesis_points.append(f"⚡ <b>MOMENTUM CONFIRMED:</b> Stoch %K ({last['Stoch_K']:.1f}) > %D ({last['Stoch_D']:.1f}), indikasi tren sedang terakselerasi.")
             
             if ticker_raw in intel_map: 
                 thesis_points.append(f"📰 <b>CATALYST DRIVER:</b> Ada sentimen/news ({intel_map[ticker_raw]['topic']}).")
