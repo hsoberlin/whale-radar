@@ -114,28 +114,79 @@ st.markdown("""
 
 # --- DATABASE ENGINE ---
 master_afiliasi = {
-    "BRPT": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", "CUAN": "PRAJOGO PANGESTU", 
-    "BREN": "PRAJOGO PANGESTU", "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
+    # --- 1. GENG BARITO (PRAJOGO PANGESTU) ---
+    "BREN": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", 
+    "CUAN": "PRAJOGO PANGESTU", "BRPT": "PRAJOGO PANGESTU", 
+    "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
     "CDIA": "PRAJOGO PANGESTU", "GZCO": "PRAJOGO PANGESTU",
-    "BNBR": "BAKRIE GROUP", "BUMI": "BAKRIE & SALIM", "UNSP": "BAKRIE GROUP",
-    "ENRG": "BAKRIE GROUP", "DEWA": "BAKRIE GROUP", "BRMS": "BAKRIE GROUP", 
-    "VIVA": "BAKRIE GROUP", "MDIA": "BAKRIE GROUP", "JGLE": "BAKRIE GROUP", 
-    "ALII": "BAKRIE GROUP", "ELTY": "BAKRIE GROUP", "BTEL": "BAKRIE GROUP",
-    "AMMN": "SALIM & PANIGORO", "DNET": "SALIM GROUP", "INDF": "SALIM GROUP", 
-    "ICBP": "SALIM GROUP", "LSIP": "SALIM GROUP", "SIMP": "SALIM GROUP",
-    "META": "SALIM GROUP", "ROTI": "SALIM GROUP", "IMAS": "SALIM GROUP",
-    "DSSA": "SINAR MAS", "BSDE": "SINAR MAS", "INKP": "SINAR MAS", 
-    "TKIM": "SINAR MAS", "SMMA": "SINAR MAS", "DUTI": "SINAR MAS",
-    "SMAR": "SINAR MAS", "FREN": "SINAR MAS",
-    "PANI": "AGUAN (PIK 2)", "CBDK": "AGUAN (SEDAYU)", "ASRI": "AGUAN GROUP",
-    "JIHD": "TOMY WINATA", "AGRO": "TOMY WINATA",
-    "HITS": "TOMMY SOEHARTO", "HUMI": "TOMMY SOEHARTO", "GOLF": "TOMMY SOEHARTO",
-    "ADRO": "BOY THOHIR", "ADMR": "BOY THOHIR", "ESSA": "BOY THOHIR",
-    "MBMA": "BOY THOHIR", "MDKA": "BOY THOHIR (SANDI)",
-    "RAJA": "HAPPY HAPSORO", "CBRE": "HAPPY HAPSORO", "PSAB": "HAPPY HAPSORO",
-    "MEDC": "ARIFIN PANIGORO", "DRMA": "TP RACHMAT", "ASLC": "TP RACHMAT", "TAPG": "TP RACHMAT",
-    "TOBA": "LUHUT GROUP", "PGAS": "STATE OWNED", "BBRI": "STATE OWNED", 
-    "BMRI": "STATE OWNED", "BBNI": "STATE OWNED", "TLKM": "STATE OWNED", "ANTM": "STATE OWNED"
+
+    # --- 2. GENG BAKRIE (THE LEGENDS) ---
+    "BUMI": "BAKRIE & SALIM",   "BRMS": "BAKRIE GROUP", 
+    "ENRG": "BAKRIE GROUP",     "DEWA": "BAKRIE GROUP", 
+    "BNBR": "BAKRIE GROUP",     "UNSP": "BAKRIE GROUP",
+    "VIVA": "BAKRIE GROUP",     "MDIA": "BAKRIE GROUP", 
+    "JGLE": "BAKRIE GROUP",     "ALII": "BAKRIE GROUP", 
+    "ELTY": "BAKRIE GROUP",     "BTEL": "BAKRIE GROUP",
+    "VKTR": "BAKRIE GROUP",
+
+    # --- 3. GENG SALIM (THE TITANS) ---
+    "AMMN": "SALIM & PANIGORO", "INDF": "SALIM GROUP", 
+    "ICBP": "SALIM GROUP",      "LSIP": "SALIM GROUP", 
+    "SIMP": "SALIM GROUP",      "META": "SALIM GROUP", 
+    "ROTI": "SALIM GROUP",      "IMAS": "SALIM GROUP",
+    "DNET": "SALIM GROUP",      "MEDC": "SALIM & PANIGORO",
+
+    # --- 4. GENG SINAR MAS (THE GIANTS) ---
+    "DSSA": "SINAR MAS",        "BSDE": "SINAR MAS", 
+    "INKP": "SINAR MAS",        "TKIM": "SINAR MAS", 
+    "SMMA": "SINAR MAS",        "DUTI": "SINAR MAS",
+    "SMAR": "SINAR MAS",        "FREN": "SINAR MAS",
+    "DMAS": "SINAR MAS",
+
+    # --- 5. GENG AGUAN / AGUNG SEDAYU (PIK 2) ---
+    "PANI": "AGUAN (PIK 2)",    "MKPI": "AGUAN GROUP",
+    "ASRI": "AGUAN GROUP",      "CBDK": "AGUAN (SEDAYU)",
+
+    # --- 6. GENG ADARO / BOY THOHIR ---
+    "ADRO": "BOY THOHIR",       "ADMR": "BOY THOHIR", 
+    "ESSA": "BOY THOHIR",       "MBMA": "BOY THOHIR", 
+    "MDKA": "BOY THOHIR (SANDI)",
+
+    # --- 7. GENG TRIPUTRA (TP RACHMAT) ---
+    "DRMA": "TP RACHMAT",       "TAPG": "TP RACHMAT", 
+    "DSNG": "TP RACHMAT",       "ASSA": "TP RACHMAT", 
+    "ASLC": "TP RACHMAT",
+
+    # --- 8. GENG HAPPY HAPSORO ---
+    "RAJA": "HAPPY HAPSORO",    "CBRE": "HAPPY HAPSORO", 
+    "PSAB": "HAPPY HAPSORO",    "MINA": "HAPPY HAPSORO",
+    "OASA": "HAPPY HAPSORO",
+
+    # --- 9. GENG TOMY WINATA (ARTHA GRAHA) ---
+    "JIHD": "TOMY WINATA",      "SCBD": "TOMY WINATA",
+    "TINY": "TOMY WINATA",
+
+    # --- 10. GENG MNC (HARY TANOE) ---
+    "KPIG": "MNC GROUP",        "BHIT": "MNC GROUP",
+    "MNCN": "MNC GROUP",        "IPTV": "MNC GROUP",
+    "BABP": "MNC GROUP",        "BCAP": "MNC GROUP",
+
+    # --- 11. GENG LIPPO (RIADY) ---
+    "LPKR": "LIPPO GROUP",      "LPPF": "LIPPO GROUP",
+    "MLPL": "LIPPO GROUP",      "MPPA": "LIPPO GROUP",
+    "SILO": "LIPPO GROUP",
+
+    # --- 12. TECH & NEW ECONOMY ---
+    "GOTO": "GOTO / TECH",      "EMTK": "EMTEK GROUP",
+    "SCMA": "EMTEK GROUP",      "BUKA": "BUKALAPAK",
+    "ARTO": "JAGO (GOTO)",
+
+    # --- 13. BUMN (THE STATE MOVERS) ---
+    "BBRI": "STATE OWNED",      "BMRI": "STATE OWNED", 
+    "BBNI": "STATE OWNED",      "TLKM": "STATE OWNED", 
+    "ANTM": "STATE OWNED",      "PTBA": "STATE OWNED", 
+    "TINS": "STATE OWNED",      "PGAS": "STATE OWNED",
+    "SMGR": "STATE OWNED",      "JSMR": "STATE OWNED"
 }
 
 # --- SECTOR MAPPING (EXPANDED FOR BETTER ACCURACY) ---
@@ -183,7 +234,6 @@ SECTOR_MAP = {
 }
 
 def get_sector(ticker):
-    # Fallback ke map
     if ticker in SECTOR_MAP:
         return SECTOR_MAP[ticker]
     return "OTHERS"
@@ -241,7 +291,6 @@ def build_flow_features(df):
     df['MA20'] = df['Close'].rolling(20).mean()
     df['Trend_State'] = np.where(df['Close'] > df['MA20'], "BULLISH", "BEARISH")
     
-    # --- RSI (14) - dipakai terpisah, bukan basis stochastic ---
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
@@ -250,7 +299,6 @@ def build_flow_features(df):
 
     # =========================================================
     # --- STOCHASTIC OSCILLATOR 10,5,5 (REAL, BUKAN STOCH-RSI) ---
-    # %K Length = 10, %K Smoothing = 5, %D Smoothing = 5
     # =========================================================
     stoch_len, k_smooth, d_smooth = 10, 5, 5
     low_min = df['Low'].rolling(stoch_len).min()
@@ -258,14 +306,13 @@ def build_flow_features(df):
     raw_k = 100 * (df['Close'] - low_min) / (high_max - low_min)
     raw_k = raw_k.replace([np.inf, -np.inf], np.nan).fillna(50)
 
-    df['Full_K'] = raw_k.rolling(k_smooth).mean().fillna(50)   # garis biru (%K)
-    df['Full_D'] = df['Full_K'].rolling(d_smooth).mean().fillna(50)  # garis oranye/signal (%D)
+    df['Full_K'] = raw_k.rolling(k_smooth).mean().fillna(50)   
+    df['Full_D'] = df['Full_K'].rolling(d_smooth).mean().fillna(50)  
 
-    # Deteksi persilangan (cross) antara %K dan %D
     k_prev = df['Full_K'].shift(1)
     d_prev = df['Full_D'].shift(1)
-    df['Stoch_Cross_Up'] = (df['Full_K'] > df['Full_D']) & (k_prev <= d_prev)     # Golden Cross
-    df['Stoch_Cross_Down'] = (df['Full_K'] < df['Full_D']) & (k_prev >= d_prev)   # Death Cross
+    df['Stoch_Cross_Up'] = (df['Full_K'] > df['Full_D']) & (k_prev <= d_prev)      
+    df['Stoch_Cross_Down'] = (df['Full_K'] < df['Full_D']) & (k_prev >= d_prev)    
 
     def classify_stoch(row):
         k, d = row['Full_K'], row['Full_D']
@@ -307,7 +354,7 @@ def build_flow_features(df):
     
     return df
 
-# --- TRENDLINE ENGINE (SLOPING/MIRING LOGIC) ---
+# --- TRENDLINE ENGINE ---
 def get_precise_trendlines(df, window=50):
     df_recent = df.tail(window).copy()
     df_recent['idx_num'] = np.arange(len(df_recent))
@@ -315,34 +362,18 @@ def get_precise_trendlines(df, window=50):
     zone_left = df_recent.iloc[:mid_point]
     zone_right = df_recent.iloc[mid_point:]
     
-    # High Points
-    h1_idx = zone_left['High'].idxmax()
-    h1_val = zone_left['High'].max()
-    h1_x = df_recent.loc[h1_idx, 'idx_num']
+    h1_idx = zone_left['High'].idxmax(); h1_val = zone_left['High'].max(); h1_x = df_recent.loc[h1_idx, 'idx_num']
+    h2_idx = zone_right['High'].idxmax(); h2_val = zone_right['High'].max(); h2_x = df_recent.loc[h2_idx, 'idx_num']
+    l1_idx = zone_left['Low'].idxmin(); l1_val = zone_left['Low'].min(); l1_x = df_recent.loc[l1_idx, 'idx_num']
+    l2_idx = zone_right['Low'].idxmin(); l2_val = zone_right['Low'].min(); l2_x = df_recent.loc[l2_idx, 'idx_num']
     
-    h2_idx = zone_right['High'].idxmax()
-    h2_val = zone_right['High'].max()
-    h2_x = df_recent.loc[h2_idx, 'idx_num']
-    
-    # Low Points
-    l1_idx = zone_left['Low'].idxmin()
-    l1_val = zone_left['Low'].min()
-    l1_x = df_recent.loc[l1_idx, 'idx_num']
-    
-    l2_idx = zone_right['Low'].idxmin()
-    l2_val = zone_right['Low'].min()
-    l2_x = df_recent.loc[l2_idx, 'idx_num']
-    
-    # Slope Calc
     slope_upper = (h2_val - h1_val) / (h2_x - h1_x) if h2_x != h1_x else 0
     slope_lower = (l2_val - l1_val) / (l2_x - l1_x) if l2_x != l1_x else 0
     
-    # Generate Lines
     x_line = np.arange(window) 
     y_upper_line = [h1_val + slope_upper * (i - h1_x) for i in x_line]
     y_lower_line = [l1_val + slope_lower * (i - l1_x) for i in x_line]
     
-    # Pattern Naming
     if slope_upper < 0 and slope_lower > 0: pattern = "SYMM TRIANGLE"
     elif slope_upper < 0 and slope_lower < 0: pattern = "FALLING WEDGE"
     elif slope_upper > 0 and slope_lower > 0: pattern = "RISING WEDGE"
@@ -350,18 +381,11 @@ def get_precise_trendlines(df, window=50):
     else: pattern = "CONSOLIDATION"
 
     return {
-        "dates": df_recent.index,
-        "y_upper": y_upper_line,
-        "y_lower": y_lower_line,
-        "pattern_name": pattern
+        "dates": df_recent.index, "y_upper": y_upper_line, "y_lower": y_lower_line, "pattern_name": pattern
     }
 
-# --- ATR-BASED TRADE PLAN ENGINE (WITH REWARD %) ---
+# --- ATR-BASED TRADE PLAN ENGINE ---
 def calculate_trade_plan(df):
-    """
-    Menghitung Trade Plan (Entry, SL, TP) & Risk/Reward.
-    Output: Stop Loss, Target Price, Risk Pct, Reward Pct.
-    """
     df = df.copy()
     df['H-L'] = df['High'] - df['Low']
     df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
@@ -372,14 +396,10 @@ def calculate_trade_plan(df):
     last_close = df['Close'].iloc[-1]
     last_atr = df['ATR'].iloc[-1] if not pd.isna(df['ATR'].iloc[-1]) else (last_close * 0.05)
     
-    # SL = 2x ATR
     stop_loss = int(last_close - (2 * last_atr))
-    
-    # Target = Risk Reward 1:2
     risk = last_close - stop_loss
     target_price = int(last_close + (risk * 2.0))
     
-    # Hitung Persentase
     risk_pct = round((risk / last_close) * 100, 1)
     reward_pct = round(((target_price - last_close) / last_close) * 100, 1)
     
@@ -387,8 +407,7 @@ def calculate_trade_plan(df):
 
 def get_catalyst_tag(headline, existing_topic):
     text = headline.upper()
-    if existing_topic and existing_topic not in ["STRATEGIS", "LAINNYA"]:
-        return existing_topic
+    if existing_topic and existing_topic not in ["STRATEGIS", "LAINNYA"]: return existing_topic
     if 'LABA' in text or 'PROFIT' in text or 'EARNINGS' in text:
         if 'NAIK' in text or 'LONJAK' in text: return "EARNINGS BEAT"
         if 'TURUN' in text: return "EARNINGS DROP"
@@ -425,58 +444,42 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- SMART CORRELATION LOGIC (SECTOR WEIGHTED) ---
+# --- SMART CORRELATION LOGIC ---
 def analyze_correlation(ticker, stock_chg, macro_data):
     reasons = []
     sector = get_sector(ticker)
     
-    # 1. MINYAK (OIL)
     oil_chg = macro_data.get('OIL', {}).get('chg', 0)
     if stock_chg > 0 and oil_chg > 0.5:
-        if sector == "ENERGY":
-            reasons.append(f"🛢️ <b>COMMODITY PLAY:</b> Diuntungkan kenaikan harga Minyak (+{oil_chg:.2f}%).")
+        if sector == "ENERGY": reasons.append(f"🛢️ <b>COMMODITY PLAY:</b> Diuntungkan kenaikan harga Minyak (+{oil_chg:.2f}%).")
 
-    # 2. EMAS (GOLD)
     gold_chg = macro_data.get('GOLD', {}).get('chg', 0)
     if stock_chg > 0 and gold_chg > 0.5:
         if sector == "BASIC-MAT" or sector == "METAL":
-            if ticker in ["ANTM", "MDKA", "PSAB", "BRMS", "ARCHI"]:
-                reasons.append(f"🛡️ <b>GOLD PROXY:</b> Mengikuti reli harga Emas (+{gold_chg:.2f}%).")
-            else:
-                reasons.append(f"⛏️ <b>MATERIALS RALLY:</b> Sentimen positif sektor komoditas dasar.")
+            if ticker in ["ANTM", "MDKA", "PSAB", "BRMS", "ARCHI"]: reasons.append(f"🛡️ <b>GOLD PROXY:</b> Mengikuti reli harga Emas (+{gold_chg:.2f}%).")
+            else: reasons.append(f"⛏️ <b>MATERIALS RALLY:</b> Sentimen positif sektor komoditas dasar.")
 
-    # 3. CRYPTO / TECH
     btc_chg = macro_data.get('BITCOIN', {}).get('chg', 0)
     if stock_chg > 0 and btc_chg > 2.0:
-        if sector == "TECH" or sector == "FINANCE": 
-            reasons.append(f"🚀 <b>RISK-ON SENTIMENT:</b> Terdorong sentimen Tech/Crypto (+{btc_chg:.2f}%).")
+        if sector == "TECH" or sector == "FINANCE": reasons.append(f"🚀 <b>RISK-ON SENTIMENT:</b> Terdorong sentimen Tech/Crypto (+{btc_chg:.2f}%).")
 
-    # 4. USD (KURS)
     usd_chg = macro_data.get('USDIDR', {}).get('chg', 0)
     if abs(usd_chg) > 0.3:
-        if sector == "PROPERTY" and usd_chg < 0: 
-            reasons.append(f"🏠 <b>FOREX RELIEF:</b> Penguatan Rupiah positif untuk Properti.")
-        elif sector == "CONSUMER" and usd_chg < 0:
-            reasons.append(f"🛒 <b>COST RELIEF:</b> Penguatan Rupiah menekan biaya impor bahan baku.")
-        elif (sector == "ENERGY" or sector == "BASIC-MAT") and usd_chg > 0: 
-            reasons.append(f"💵 <b>USD REVENUE:</b> Potensi laba kurs (Eksportir).")
+        if sector == "PROPERTY" and usd_chg < 0: reasons.append(f"🏠 <b>FOREX RELIEF:</b> Penguatan Rupiah positif untuk Properti.")
+        elif sector == "CONSUMER" and usd_chg < 0: reasons.append(f"🛒 <b>COST RELIEF:</b> Penguatan Rupiah menekan biaya impor bahan baku.")
+        elif (sector == "ENERGY" or sector == "BASIC-MAT") and usd_chg > 0: reasons.append(f"💵 <b>USD REVENUE:</b> Potensi laba kurs (Eksportir).")
 
-    # 5. DEFAULT / MARKET
     if not reasons:
         ihsg_chg = macro_data.get('IHSG', {}).get('chg', 0)
-        if stock_chg > 0 and ihsg_chg > 0:
-            reasons.append(f"🔗 <b>MARKET SYNC:</b> Bergerak harmonis dengan IHSG.")
-        elif stock_chg > 0 and ihsg_chg < 0:
-            reasons.append(f"🦄 <b>ALPHA MOVER:</b> Melawan arus market (Strong Divergence).")
-        else:
-            reasons.append(f"🎯 <b>IDIOSYNCRATIC:</b> Pergerakan didorong faktor spesifik emiten.")
+        if stock_chg > 0 and ihsg_chg > 0: reasons.append(f"🔗 <b>MARKET SYNC:</b> Bergerak harmonis dengan IHSG.")
+        elif stock_chg > 0 and ihsg_chg < 0: reasons.append(f"🦄 <b>ALPHA MOVER:</b> Melawan arus market (Strong Divergence).")
+        else: reasons.append(f"🎯 <b>IDIOSYNCRATIC:</b> Pergerakan didorong faktor spesifik emiten.")
             
     return "<br>".join(reasons)
 
 def get_stoch_thesis(last):
-    """Membentuk narasi thesis khusus untuk Stochastic 10,5,5."""
     k, d, signal = last['Full_K'], last['Full_D'], last['Stoch_Signal']
-    if "GOLDEN CROSS" in signal or "MULAI NAIK" in signal or "OVERSOLD & MULAI NAIK" in signal:
+    if "GOLDEN CROSS" in signal or "MULAI NAIK" in signal or "OVERSOLD" in signal:
         color = "#00ffcc"
     elif "DEATH CROSS" in signal or "JENUH BELI" in signal:
         color = "#ff0055"
@@ -503,6 +506,12 @@ def scan_market(macro_data):
             if h.iloc[-1].isnull().any(): continue
             
             last = h.iloc[-1]
+            
+            # --- HARD FILTER LIKUIDITAS MINIMAL 5 MILIAR ---
+            val_rp = last['value']
+            if val_rp < 5_000_000_000:
+                continue
+
             is_volume_spike = last['vol_ma5'] > 1.2 * last['vol_ma50']
             has_news = ticker in intel_map
             
@@ -539,11 +548,19 @@ def scan_market(macro_data):
             else:
                 thesis_points.append("📉 <b>STRUCTURE:</b> Fase koreksi/konsolidasi.")
 
-            # --- STOCHASTIC 10,5,5 THESIS ---
+            # --- STOCHASTIC 10,5,5 ALPHA SCORING ---
+            stoch_sig = last['Stoch_Signal']
+            stoch_k = last['Full_K']
             stoch_thesis = get_stoch_thesis(last)
             thesis_points.append(stoch_thesis)
-            if "GOLDEN CROSS" in last['Stoch_Signal'] or "MULAI NAIK" in last['Stoch_Signal']:
-                score += 15
+            
+            if "GOLDEN CROSS" in stoch_sig or "MULAI NAIK" in stoch_sig:
+                if stoch_k < 50:
+                    score += 25  # Bobot ekstra agresif untuk Early Reversal
+                else:
+                    score += 15  # Bobot standar Golden Cross biasa
+            elif "JENUH JUAL" in stoch_sig or "OVERSOLD" in stoch_sig:
+                score += 15 # Tambahan skor untuk akumulasi di area oversold
 
             beta_thesis = analyze_correlation(ticker, last['chg_pct'], macro_data)
             thesis_points.append(beta_thesis)
@@ -553,7 +570,7 @@ def scan_market(macro_data):
                 topic_display = news_topic_raw if news_topic_raw != "STRATEGIS" else "NEWS UPDATE"
                 thesis_points.append(f"📰 <b>EVENT: {topic_display}</b> - {news_headline[:60]}...")
 
-            # --- EXECUTION PLAN (WITH REWARD %) ---
+            # --- EXECUTION PLAN ---
             stop_loss, target_price, risk_pct, reward_pct = calculate_trade_plan(h)
             entry_price = int(last['Close'])
             
@@ -661,7 +678,6 @@ def render_quantum_pixel_chart(target):
     fig.add_trace(go.Scatter(x=df.index, y=df['Full_K'], line=dict(color='#0088ff', width=2), name='%K (Biru)'), row=4, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=df['Full_D'], line=dict(color='#ff9900', width=2), name='%D (Oranye)'), row=4, col=1)
 
-    # Marker golden cross / death cross langsung di panel stochastic
     gcross = df[df['Stoch_Cross_Up']]
     if not gcross.empty:
         fig.add_trace(go.Scatter(x=gcross.index, y=gcross['Full_K'], mode='markers',
