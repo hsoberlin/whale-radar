@@ -114,128 +114,69 @@ st.markdown("""
 
 # --- DATABASE ENGINE ---
 master_afiliasi = {
-    # --- 1. GENG BARITO (PRAJOGO PANGESTU) ---
-    "BREN": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", 
-    "CUAN": "PRAJOGO PANGESTU", "BRPT": "PRAJOGO PANGESTU", 
-    "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
+    "BREN": "PRAJOGO PANGESTU", "TPIA": "PRAJOGO PANGESTU", "CUAN": "PRAJOGO PANGESTU", 
+    "BRPT": "PRAJOGO PANGESTU", "PTRO": "PRAJOGO PANGESTU", "CGAS": "PRAJOGO PANGESTU",
     "CDIA": "PRAJOGO PANGESTU", "GZCO": "PRAJOGO PANGESTU",
-
-    # --- 2. GENG BAKRIE (THE LEGENDS) ---
-    "BUMI": "BAKRIE & SALIM",   "BRMS": "BAKRIE GROUP", 
-    "ENRG": "BAKRIE GROUP",     "DEWA": "BAKRIE GROUP", 
-    "BNBR": "BAKRIE GROUP",     "UNSP": "BAKRIE GROUP",
-    "VIVA": "BAKRIE GROUP",     "MDIA": "BAKRIE GROUP", 
-    "JGLE": "BAKRIE GROUP",     "ALII": "BAKRIE GROUP", 
-    "ELTY": "BAKRIE GROUP",     "BTEL": "BAKRIE GROUP",
-    "VKTR": "BAKRIE GROUP",
-
-    # --- 3. GENG SALIM (THE TITANS) ---
-    "AMMN": "SALIM & PANIGORO", "INDF": "SALIM GROUP", 
-    "ICBP": "SALIM GROUP",      "LSIP": "SALIM GROUP", 
-    "SIMP": "SALIM GROUP",      "META": "SALIM GROUP", 
-    "ROTI": "SALIM GROUP",      "IMAS": "SALIM GROUP",
-    "DNET": "SALIM GROUP",      "MEDC": "SALIM & PANIGORO",
-
-    # --- 4. GENG SINAR MAS (THE GIANTS) ---
-    "DSSA": "SINAR MAS",        "BSDE": "SINAR MAS", 
-    "INKP": "SINAR MAS",        "TKIM": "SINAR MAS", 
-    "SMMA": "SINAR MAS",        "DUTI": "SINAR MAS",
-    "SMAR": "SINAR MAS",        "FREN": "SINAR MAS",
-    "DMAS": "SINAR MAS",
-
-    # --- 5. GENG AGUAN / AGUNG SEDAYU (PIK 2) ---
-    "PANI": "AGUAN (PIK 2)",    "MKPI": "AGUAN GROUP",
-    "ASRI": "AGUAN GROUP",      "CBDK": "AGUAN (SEDAYU)",
-
-    # --- 6. GENG ADARO / BOY THOHIR ---
-    "ADRO": "BOY THOHIR",       "ADMR": "BOY THOHIR", 
-    "ESSA": "BOY THOHIR",       "MBMA": "BOY THOHIR", 
-    "MDKA": "BOY THOHIR (SANDI)",
-
-    # --- 7. GENG TRIPUTRA (TP RACHMAT) ---
-    "DRMA": "TP RACHMAT",       "TAPG": "TP RACHMAT", 
-    "DSNG": "TP RACHMAT",       "ASSA": "TP RACHMAT", 
-    "ASLC": "TP RACHMAT",
-
-    # --- 8. GENG HAPPY HAPSORO ---
-    "RAJA": "HAPPY HAPSORO",    "CBRE": "HAPPY HAPSORO", 
-    "PSAB": "HAPPY HAPSORO",    "MINA": "HAPPY HAPSORO",
-    "OASA": "HAPPY HAPSORO",
-
-    # --- 9. GENG TOMY WINATA (ARTHA GRAHA) ---
-    "JIHD": "TOMY WINATA",      "SCBD": "TOMY WINATA",
-    "TINY": "TOMY WINATA",
-
-    # --- 10. GENG MNC (HARY TANOE) ---
-    "KPIG": "MNC GROUP",        "BHIT": "MNC GROUP",
-    "MNCN": "MNC GROUP",        "IPTV": "MNC GROUP",
-    "BABP": "MNC GROUP",        "BCAP": "MNC GROUP",
-
-    # --- 11. GENG LIPPO (RIADY) ---
-    "LPKR": "LIPPO GROUP",      "LPPF": "LIPPO GROUP",
-    "MLPL": "LIPPO GROUP",      "MPPA": "LIPPO GROUP",
-    "SILO": "LIPPO GROUP",
-
-    # --- 12. TECH & NEW ECONOMY ---
-    "GOTO": "GOTO / TECH",      "EMTK": "EMTEK GROUP",
-    "SCMA": "EMTEK GROUP",      "BUKA": "BUKALAPAK",
-    "ARTO": "JAGO (GOTO)",
-
-    # --- 13. BUMN (THE STATE MOVERS) ---
-    "BBRI": "STATE OWNED",      "BMRI": "STATE OWNED", 
-    "BBNI": "STATE OWNED",      "TLKM": "STATE OWNED", 
-    "ANTM": "STATE OWNED",      "PTBA": "STATE OWNED", 
-    "TINS": "STATE OWNED",      "PGAS": "STATE OWNED",
-    "SMGR": "STATE OWNED",      "JSMR": "STATE OWNED"
+    "BUMI": "BAKRIE & SALIM",   "BRMS": "BAKRIE GROUP", "ENRG": "BAKRIE GROUP",     
+    "DEWA": "BAKRIE GROUP", "BNBR": "BAKRIE GROUP", "UNSP": "BAKRIE GROUP",
+    "VIVA": "BAKRIE GROUP", "MDIA": "BAKRIE GROUP", "JGLE": "BAKRIE GROUP",     
+    "ALII": "BAKRIE GROUP", "ELTY": "BAKRIE GROUP", "BTEL": "BAKRIE GROUP",
+    "VKTR": "BAKRIE GROUP", "AMMN": "SALIM & PANIGORO", "INDF": "SALIM GROUP", 
+    "ICBP": "SALIM GROUP", "LSIP": "SALIM GROUP", "SIMP": "SALIM GROUP",      
+    "META": "SALIM GROUP", "ROTI": "SALIM GROUP", "IMAS": "SALIM GROUP",
+    "DNET": "SALIM GROUP", "MEDC": "SALIM & PANIGORO", "DSSA": "SINAR MAS",        
+    "BSDE": "SINAR MAS", "INKP": "SINAR MAS", "TKIM": "SINAR MAS", 
+    "SMMA": "SINAR MAS", "DUTI": "SINAR MAS", "SMAR": "SINAR MAS",        
+    "FREN": "SINAR MAS", "DMAS": "SINAR MAS", "PANI": "AGUAN (PIK 2)",    
+    "MKPI": "AGUAN GROUP", "ASRI": "AGUAN GROUP", "CBDK": "AGUAN (SEDAYU)",
+    "ADRO": "BOY THOHIR", "ADMR": "BOY THOHIR", "ESSA": "BOY THOHIR",       
+    "MBMA": "BOY THOHIR", "MDKA": "BOY THOHIR (SANDI)", "DRMA": "TP RACHMAT",       
+    "TAPG": "TP RACHMAT", "DSNG": "TP RACHMAT", "ASSA": "TP RACHMAT", 
+    "ASLC": "TP RACHMAT", "RAJA": "HAPPY HAPSORO", "CBRE": "HAPPY HAPSORO", 
+    "PSAB": "HAPPY HAPSORO", "MINA": "HAPPY HAPSORO", "OASA": "HAPPY HAPSORO",
+    "JIHD": "TOMY WINATA", "SCBD": "TOMY WINATA", "TINY": "TOMY WINATA",
+    "KPIG": "MNC GROUP", "BHIT": "MNC GROUP", "MNCN": "MNC GROUP",        
+    "IPTV": "MNC GROUP", "BABP": "MNC GROUP", "BCAP": "MNC GROUP",
+    "LPKR": "LIPPO GROUP", "LPPF": "LIPPO GROUP", "MLPL": "LIPPO GROUP",      
+    "MPPA": "LIPPO GROUP", "SILO": "LIPPO GROUP", "GOTO": "GOTO / TECH",      
+    "EMTK": "EMTEK GROUP", "SCMA": "EMTEK GROUP", "BUKA": "BUKALAPAK",
+    "ARTO": "JAGO (GOTO)", "BBRI": "STATE OWNED", "BMRI": "STATE OWNED", 
+    "BBNI": "STATE OWNED", "TLKM": "STATE OWNED", "ANTM": "STATE OWNED",      
+    "PTBA": "STATE OWNED", "TINS": "STATE OWNED", "PGAS": "STATE OWNED",
+    "SMGR": "STATE OWNED", "JSMR": "STATE OWNED"
 }
 
-# --- SECTOR MAPPING (EXPANDED FOR BETTER ACCURACY) ---
+# --- SECTOR MAPPING ---
 SECTOR_MAP = {
-    # 1. FINANCIALS
     "BBCA": "FINANCE", "BBRI": "FINANCE", "BMRI": "FINANCE", "BBNI": "FINANCE",
     "BBTN": "FINANCE", "BRIS": "FINANCE", "ARTO": "FINANCE", "BJBR": "FINANCE",
     "BJTM": "FINANCE", "TUGU": "FINANCE", "PNBN": "FINANCE", "BDMN": "FINANCE",
     "BBHI": "FINANCE", "SRTG": "FINANCE", "ADMF": "FINANCE",
-
-    # 2. ENERGY
     "ADRO": "ENERGY", "PTBA": "ENERGY", "ITMG": "ENERGY", "BYAN": "ENERGY",
     "HRUM": "ENERGY", "INDY": "ENERGY", "MEDC": "ENERGY", "ELSA": "ENERGY",
     "PGAS": "ENERGY", "AKRA": "ENERGY", "DOID": "ENERGY", "BUMI": "ENERGY",
     "ENRG": "ENERGY", "RAJA": "ENERGY", "WINK": "ENERGY", "KKGI": "ENERGY",
-
-    # 3. BASIC MATERIALS
     "ANTM": "BASIC-MAT", "MDKA": "BASIC-MAT", "INCO": "BASIC-MAT", "TINS": "BASIC-MAT",
     "MBMA": "BASIC-MAT", "NCKL": "BASIC-MAT", "BRMS": "BASIC-MAT", "PSAB": "BASIC-MAT",
     "INKP": "BASIC-MAT", "TKIM": "BASIC-MAT", "SMGR": "BASIC-MAT", "INTP": "BASIC-MAT",
     "TPIA": "BASIC-MAT", "BRPT": "BASIC-MAT", "ESSA": "BASIC-MAT", "LTLS": "BASIC-MAT",
-
-    # 4. INFRASTRUCTURE
     "TLKM": "INFRA", "ISAT": "INFRA", "EXCL": "INFRA", "FREN": "INFRA",
     "JSMR": "INFRA", "TBIG": "INFRA", "TOWR": "INFRA", "MTEL": "INFRA",
     "META": "INFRA", "PPRE": "INFRA", "ADHI": "INFRA", "WIKA": "INFRA", "PTPP": "INFRA",
-
-    # 5. CONSUMER
     "ICBP": "CONSUMER", "INDF": "CONSUMER", "UNVR": "CONSUMER", "MYOR": "CONSUMER",
     "AMRT": "CONSUMER", "MIDI": "CONSUMER", "ACES": "CONSUMER", "MAPI": "CONSUMER",
     "CPIN": "CONSUMER", "JPFA": "CONSUMER", "GGRM": "CONSUMER", "HMSP": "CONSUMER",
     "KLBF": "CONSUMER", "SIDO": "CONSUMER", "AUTO": "CONSUMER", "ASII": "CONSUMER",
-
-    # 6. PROPERTY
     "BSDE": "PROPERTY", "CTRA": "PROPERTY", "SMRA": "PROPERTY", "PWON": "PROPERTY",
     "ASRI": "PROPERTY", "DILD": "PROPERTY", "PANI": "PROPERTY", "APLN": "PROPERTY",
     "LPCK": "PROPERTY", "LPKR": "PROPERTY", "BEST": "PROPERTY", "DMAS": "PROPERTY",
-
-    # 7. TECHNOLOGY
     "GOTO": "TECH", "BUKA": "TECH", "EMTK": "TECH", "SCMA": "TECH",
     "WIRG": "TECH", "DCII": "TECH", "AWAN": "TECH", "BELI": "TECH",
-
-    # 8. TRANSPORT
     "ASSA": "TRANS", "BIRD": "TRANS", "SMDR": "TRANS", "TMAS": "TRANS", "GIAA": "TRANS"
 }
 
 def get_sector(ticker):
-    if ticker in SECTOR_MAP:
-        return SECTOR_MAP[ticker]
+    if ticker in SECTOR_MAP: return SECTOR_MAP[ticker]
     return "OTHERS"
 
 RSS_LINKS = [
@@ -260,18 +201,14 @@ def fetch_macro_context():
                 if cols:
                     series = df[cols[0]].dropna()
                     if not series.empty:
-                        now = series.iloc[-1]
-                        prev = series.iloc[-2]
+                        now = series.iloc[-1]; prev = series.iloc[-2]
                         macro_data[name] = {"val": now, "chg": (now - prev)/prev*100}
             except: pass
 
         if not df.empty:
-            safe_extract('^JKSE', 'IHSG')
-            safe_extract('IDR=X', 'USDIDR')
-            safe_extract('CL=F', 'OIL')
-            safe_extract('GC=F', 'GOLD')
-            safe_extract('BTC-USD', 'BITCOIN')
-            safe_extract('^IXIC', 'NASDAQ')
+            safe_extract('^JKSE', 'IHSG'); safe_extract('IDR=X', 'USDIDR')
+            safe_extract('CL=F', 'OIL'); safe_extract('GC=F', 'GOLD')
+            safe_extract('BTC-USD', 'BITCOIN'); safe_extract('^IXIC', 'NASDAQ')
             
     except Exception as e: pass
     return macro_data
@@ -297,9 +234,7 @@ def build_flow_features(df):
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
 
-    # =========================================================
-    # --- STOCHASTIC OSCILLATOR 10,5,5 (REAL, BUKAN STOCH-RSI) ---
-    # =========================================================
+    # --- STOCHASTIC OSCILLATOR 10,5,5 ---
     stoch_len, k_smooth, d_smooth = 10, 5, 5
     low_min = df['Low'].rolling(stoch_len).min()
     high_max = df['High'].rolling(stoch_len).max()
@@ -317,28 +252,17 @@ def build_flow_features(df):
     def classify_stoch(row):
         k, d = row['Full_K'], row['Full_D']
         cu, cd = row['Stoch_Cross_Up'], row['Stoch_Cross_Down']
-        if cu and k < 20:
-            return "GOLDEN CROSS DI ZONA JENUH JUAL"
-        elif cu and k < 50:
-            return "GOLDEN CROSS BARU TERBENTUK (<50)"
-        elif cu:
-            return "GOLDEN CROSS BULLISH (>50)"
-        elif cd and k > 80:
-            return "DEATH CROSS DI ZONA JENUH BELI"
-        elif cd:
-            return "DEATH CROSS"
-        elif k > d and k < 20:
-            return "OVERSOLD & MULAI NAIK"
-        elif k > d and k < 50:
-            return "MULAI NAIK, %K MASIH DI BAWAH 50"
-        elif k > d:
-            return "BULLISH MOMENTUM"
-        elif k < 20:
-            return "JENUH JUAL (OVERSOLD)"
-        elif k > 80:
-            return "JENUH BELI (OVERBOUGHT)"
-        else:
-            return "NEUTRAL / SIDEWAYS"
+        if cu and k < 20: return "GOLDEN CROSS DI ZONA JENUH JUAL"
+        elif cu and k < 50: return "GOLDEN CROSS BARU TERBENTUK (<50)"
+        elif cu: return "GOLDEN CROSS BULLISH (>50)"
+        elif cd and k > 80: return "DEATH CROSS DI ZONA JENUH BELI"
+        elif cd: return "DEATH CROSS"
+        elif k > d and k < 20: return "OVERSOLD & MULAI NAIK"
+        elif k > d and k < 50: return "MULAI NAIK, %K MASIH DI BAWAH 50"
+        elif k > d: return "BULLISH MOMENTUM"
+        elif k < 20: return "JENUH JUAL (OVERSOLD)"
+        elif k > 80: return "JENUH BELI (OVERBOUGHT)"
+        else: return "NEUTRAL / SIDEWAYS"
 
     df['Stoch_Signal'] = df.apply(classify_stoch, axis=1)
     df['Mom_State'] = np.where(df['Full_K'] > 80, "STRONG", np.where(df['Full_K'] < 20, "WEAK", "NEUTRAL"))
@@ -479,7 +403,7 @@ def analyze_correlation(ticker, stock_chg, macro_data):
 
 def get_stoch_thesis(last):
     k, d, signal = last['Full_K'], last['Full_D'], last['Stoch_Signal']
-    if "GOLDEN CROSS" in signal or "MULAI NAIK" in signal or "OVERSOLD" in signal:
+    if "GOLDEN CROSS" in signal or "MULAI NAIK" in signal or "OVERSOLD" in signal or "JENUH JUAL" in signal:
         color = "#00ffcc"
     elif "DEATH CROSS" in signal or "JENUH BELI" in signal:
         color = "#ff0055"
@@ -533,40 +457,38 @@ def scan_market(macro_data):
             
             if is_volume_spike:
                 if last['vol_power'] > 3.0:
-                    score += 35
+                    score += 25
                     thesis_points.append(f"🌊 <b>LIQUIDITY INJECTION:</b> Deteksi akumulasi volume ekstrem ({last['vol_power']:.1f}x).")
                     if not has_news: catalyst_tag = "WHALE INFLOW"
                 else:
-                    score += 15
+                    score += 10
                     thesis_points.append(f"💧 <b>FLOW ACTIVITY:</b> Turnover stabil di atas rata-rata ({last['vol_power']:.1f}x).")
-            else:
-                score += 5
-                thesis_points.append("💤 <b>DORMANCY:</b> Volume belum meledak (News Catalyst Watch).")
 
-            if last['Trend_State'] == "BULLISH":
-                thesis_points.append("📈 <b>STRUCTURE:</b> Harga bertahan di atas MA20 (Bullish).")
-            else:
-                thesis_points.append("📉 <b>STRUCTURE:</b> Fase koreksi/konsolidasi.")
-
-            # --- STOCHASTIC 10,5,5 ALPHA SCORING ---
+            # --- STOCHASTIC 10,5,5 OVERSOLD DOMINANCE ---
             stoch_sig = last['Stoch_Signal']
             stoch_k = last['Full_K']
             stoch_thesis = get_stoch_thesis(last)
             thesis_points.append(stoch_thesis)
             
-            if "GOLDEN CROSS" in stoch_sig or "MULAI NAIK" in stoch_sig:
+            if "GOLDEN CROSS DI ZONA JENUH JUAL" in stoch_sig:
+                score += 65
+                thesis_points.append("🔥 <b>BOTTOM FISHING:</b> Sinyal pembalikan arah paling kuat di area oversold.")
+            elif "JENUH JUAL" in stoch_sig or "OVERSOLD & MULAI NAIK" in stoch_sig:
+                score += 55
+                thesis_points.append("⚓ <b>VALUE ZONE:</b> Terdeteksi di area jenuh jual maksimum.")
+            elif "GOLDEN CROSS" in stoch_sig or "MULAI NAIK" in stoch_sig:
                 if stoch_k < 50:
-                    score += 25  # Bobot ekstra agresif untuk Early Reversal
+                    score += 20
                 else:
-                    score += 15  # Bobot standar Golden Cross biasa
-            elif "JENUH JUAL" in stoch_sig or "OVERSOLD" in stoch_sig:
-                score += 15 # Tambahan skor untuk akumulasi di area oversold
+                    score += 0 # Tidak ada tambahan skor jika golden cross terjadi tinggi (overbought)
+            elif "DEATH CROSS" in stoch_sig or "JENUH BELI" in stoch_sig:
+                score -= 30 # Penalti untuk mendorong aset berisiko turun ke peringkat bawah
 
             beta_thesis = analyze_correlation(ticker, last['chg_pct'], macro_data)
             thesis_points.append(beta_thesis)
             
             if has_news: 
-                score += 30
+                score += 25
                 topic_display = news_topic_raw if news_topic_raw != "STRATEGIS" else "NEWS UPDATE"
                 thesis_points.append(f"📰 <b>EVENT: {topic_display}</b> - {news_headline[:60]}...")
 
@@ -763,7 +685,7 @@ if data:
                 batch = top_targets[i:i+2] 
                 for idx, target in enumerate(batch):
                     with cols[idx]:
-                        stoch_css = "pixel-value-up" if ("GOLDEN" in target['STOCH_SIGNAL'] or "MULAI NAIK" in target['STOCH_SIGNAL']) else ("pixel-value-down" if ("DEATH" in target['STOCH_SIGNAL'] or "JENUH BELI" in target['STOCH_SIGNAL']) else "pixel-value-neutral")
+                        stoch_css = "pixel-value-up" if ("GOLDEN" in target['STOCH_SIGNAL'] or "MULAI NAIK" in target['STOCH_SIGNAL'] or "JENUH JUAL" in target['STOCH_SIGNAL']) else ("pixel-value-down" if ("DEATH" in target['STOCH_SIGNAL'] or "JENUH BELI" in target['STOCH_SIGNAL']) else "pixel-value-neutral")
                         st.markdown(f"""
                         <div class="pixel-container">
                             <div class="pixel-metric"><span class="pixel-title">TREND</span><span class="{ 'pixel-value-up' if target['PIXEL_TREND']=='BULLISH' else 'pixel-value-down' }">{target['PIXEL_TREND']}</span></div>
