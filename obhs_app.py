@@ -11,11 +11,11 @@ from streamlit_autorefresh import st_autorefresh
 import urllib.parse
 
 # --- 1. DASHBOARD CONFIGURATION ---
-st.set_page_config(page_title="QUANTUM PRO - UNIFIED TJL ENGINE", layout="wide")
+st.set_page_config(page_title="QUANTUM PRO - LVP ENGINE", layout="wide")
 warnings.filterwarnings("ignore")
 
 # High Frequency Refresh: 5 Menit
-st_autorefresh(interval=300000, key="quantum_intraday_sync")
+st_autorefresh(interval=300000, key="quantum_lvp_sync")
 
 # --- 2. ULTRA-PREMIUM TERMINAL UI ---
 st.markdown("""
@@ -31,10 +31,10 @@ st.markdown("""
     }
     .header-title {
         font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 35px !important;
+        font-weight: 900; font-size: 32px !important;
         background: linear-gradient(90deg, #00ffcc, #ff0055);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: 4px;
+        letter-spacing: 3px;
     }
     
     .pixel-container {
@@ -43,8 +43,8 @@ st.markdown("""
     }
     .pixel-metric { flex: 1; text-align: center; font-family: 'JetBrains Mono'; }
     .pixel-title { font-size: 8px; color: #888; display: block; margin-bottom: 2px; }
-    .pixel-value-up { color: #00ffcc; font-weight: 900; font-size: 12px; text-shadow: 0 0 5px rgba(0,255,204,0.5); }
-    .pixel-value-down { color: #ff0055; font-weight: 900; font-size: 12px; text-shadow: 0 0 5px rgba(255,0,85,0.5); }
+    .pixel-value-up { color: #00ffcc; font-weight: 900; font-size: 12px; }
+    .pixel-value-down { color: #ff0055; font-weight: 900; font-size: 12px; }
     .pixel-value-neutral { color: #ffd166; font-weight: 900; font-size: 12px; }
     
     .thesis-box {
@@ -86,7 +86,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. MASSIVE TICKER DATABASE (450+ EMITEN TANPA GRUP) ---
+# --- 3. MASSIVE TICKER DATABASE (450+ EMITEN) ---
 MASTER_TICKERS = [
     "AALI", "ABBA", "ABMM", "ACES", "ADCP", "ADMR", "ADRO", "AGRO", "AHA", "AKRA", "ALDO", "ALII", 
     "AMAR", "AMMN", "AMRT", "ANTM", "APLN", "ARTO", "ASII", "ASLC", "ASRI", "ASSA", "AUTO", "AWAN",
@@ -151,136 +151,116 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- 5. DUAL-TIMEFRAME TJL SCANNER ENGINE (BATCH OPTIMIZED) ---
-def scan_tjl_market():
+# --- 5. LOW VOLUME PULLBACK (LVP) SCANNER ENGINE ---
+def scan_lvp_market():
     results = []
     intel_map, _, news_tickers = fetch_intel()
-    
-    # Menggabungkan list ticker utama dengan ticker yang sedang ada berita hari ini
     all_tickers = list(set(MASTER_TICKERS + news_tickers))
     tickers_jk = [f"{t}.JK" for t in all_tickers]
     
-    # 5.1 BATCH DOWNLOAD HARIAN (Ekstrak 450+ saham sekaligus agar tidak diblokir & cepat)
+    # 5.1 BATCH DOWNLOAD HARIAN (Filter Super Cepat Value > 50 Miliar)
     try:
-        batch_data = yf.download(tickers_jk, period="1y", interval="1d", group_by='ticker', progress=False)
+        # Mengunduh data 1 hari terakhir untuk semua saham
+        batch_daily = yf.download(tickers_jk, period="1d", interval="1d", group_by='ticker', progress=False)
     except Exception as e:
         return [], f"ERROR DOWNLOADING DATA: {e}"
 
-    # 5.2 FILTERING HARIAN (Hanya menyisakan yang Gap Up)
     surviving_tickers = []
     
     for ticker in all_tickers:
         try:
             ticker_jk = f"{ticker}.JK"
-            if ticker_jk not in batch_data.columns.levels[0]:
-                continue
+            if ticker_jk not in batch_daily.columns.levels[0]: continue
                 
-            df_d = batch_data[ticker_jk].dropna(how='all')
-            if len(df_d) < 200: continue
+            df_d = batch_daily[ticker_jk].dropna(how='all')
+            if df_d.empty: continue
             
-            df_d['SMA200'] = df_d['Close'].rolling(200).mean()
-            if pd.isna(df_d['SMA200'].iloc[-2]): continue
+            # Hitung Nilai Transaksi Harian (Volume * Harga Penutupan Terakhir)
+            last_vol = df_d['Volume'].iloc[-1]
+            last_close = df_d['Close'].iloc[-1]
+            total_value = last_vol * last_close
             
-            prev_close = df_d['Close'].iloc[-2]
-            prev_high = df_d['High'].iloc[-2]
-            sma200 = df_d['SMA200'].iloc[-2]
-            today_open = df_d['Open'].iloc[-1]
-            
-            # TJL Rule 1: Uptrend Check (Close kemarin > SMA200)
-            if prev_close < sma200: continue
-            
-            # TJL Rule 2: Pre-Market Gap Up >= 2% (Scanner A)
-            gap_pct = ((today_open - prev_close) / prev_close) * 100
-            if gap_pct < 2.0: continue
-            
-            # Jika lolos, masukkan ke daftar survivor untuk diproses Intraday
-            surviving_tickers.append({
-                "ticker": ticker,
-                "prev_close": prev_close,
-                "prev_high": prev_high,
-                "today_open": today_open,
-                "gap_pct": gap_pct
-            })
+            # FILTER 1: VALUE DI ATAS 50 MILIAR RUPIAH
+            if total_value >= 50_000_000_000:
+                surviving_tickers.append(ticker)
         except:
             continue
 
-    # 5.3 INTRADAY SCAN (Hanya diunduh untuk segelintir saham yang lolos filter)
-    for survivor in surviving_tickers:
-        ticker = survivor["ticker"]
-        prev_high = survivor["prev_high"]
-        today_open = survivor["today_open"]
-        gap_pct = survivor["gap_pct"]
-        
+    # 5.2 INTRADAY SCAN (Hanya untuk saham bernilai > 50 Miliar)
+    # Rata-rata hanya menyisakan 30-60 saham paling likuid hari ini
+    for ticker in surviving_tickers:
         try:
             s = yf.Ticker(f"{ticker}.JK")
             df_intra = s.history(period="1d", interval="5m")
-            if df_intra.empty or len(df_intra) < 2: continue
+            if df_intra.empty or len(df_intra) < 3: continue
             
-            # Proxy for Pre-Market High / Opening Range High (First 30 mins)
-            orh_limit = min(6, len(df_intra))
-            orh = df_intra['High'].iloc[:orh_limit].max() 
+            # Hitung Value per candle 5-menit
+            df_intra['Candle_Value'] = df_intra['Volume'] * df_intra['Close']
+            
+            # Cari candle terjadinya Highest High of the Day (HOD)
+            hod_val = df_intra['High'].max()
+            hod_idx = df_intra['High'].idxmax()
+            
             curr_price = df_intra['Close'].iloc[-1]
-            hod = df_intra['High'].max()
             
-            # Volume Price Analysis (VPA)
-            avg_vol_5m = df_intra['Volume'].mean()
-            last_vol = df_intra['Volume'].iloc[-1]
-            vol_spike = last_vol / avg_vol_5m if avg_vol_5m > 0 else 0
+            # FILTER 2: HARGA SEDANG TURUN (Current Price < HOD)
+            if curr_price >= hod_val: 
+                continue # Sedang di pucuk, bukan koreksi
+                
+            # BELAH FASE: Fase Naik (sampai candle HOD) & Fase Turun (setelah candle HOD)
+            phase_up = df_intra.loc[:hod_idx]
+            phase_down = df_intra.loc[hod_idx:].iloc[1:] # Memotong tepat 1 candle setelah HOD
             
-            score = 50
+            # Jika HOD terjadi di candle terakhir, berarti belum ada fase turun
+            if len(phase_down) == 0: continue
+            
+            # Hitung total value masing-masing fase
+            val_up = phase_up['Candle_Value'].sum()
+            val_down = phase_down['Candle_Value'].sum()
+            
+            if val_up == 0: continue
+            
+            # FILTER 3: VALUE TURUN DI BAWAH 1/5 (20%) DARI VALUE NAIK
+            ratio = val_down / val_up
+            if ratio >= 0.20:
+                continue # Buangan terlalu besar, gagal kriteria Low Volume Pullback
+            
+            # JIKA LOLOS SEMUA KRITERIA: Buat Thesis Laporan
+            score = 80 - (ratio * 100) # Semakin kecil rasio, skor semakin mendekati 80-100
+            
             thesis_points = []
+            thesis_points.append(f"🏢 <b>LIQUIDITY:</b> Saham sangat likuid. Total transaksi hari ini menembus <b>Rp {(val_up+val_down)/1_000_000_000:,.1f} Miliar</b>.")
+            thesis_points.append(f"📈 <b>ACCUMULATION PHASE:</b> Harga didorong naik ke HOD (Rp {hod_val:,.0f}) dengan suntikan dana <b>Rp {val_up/1_000_000_000:,.1f} Miliar</b>.")
             
-            thesis_points.append(f"🚀 <b>SCANNER A (PRE-MARKET):</b> Lolos filter! Gap Up <b>+{gap_pct:.2f}%</b>.")
-            thesis_points.append(f"📈 <b>MACRO TREND:</b> Valid Uptrend (Harga di atas SMA 200).")
-            
-            # Breakout Logic Validation
-            is_ydh_break = curr_price > prev_high
-            is_orh_break = curr_price > orh
-            is_hod_break = curr_price >= hod * 0.995
-            
-            if is_ydh_break:
-                score += 20
-                thesis_points.append(f"🔥 <b>BREAKOUT YDH:</b> Menembus level tertinggi kemarin (Rp {prev_high:,.0f}).")
-            if is_orh_break:
-                score += 15
-                thesis_points.append(f"⚡ <b>BREAKOUT ORH:</b> Menembus Opening Range High (Rp {orh:,.0f}).")
-            if is_hod_break and vol_spike > 1.5:
-                score += 15
-                thesis_points.append(f"🌊 <b>VPA TRIGGER:</b> Volume meledak {vol_spike:.1f}x di level HOD!")
+            # Warning warna hijau/kuning berdasarkan tingkat keringnya buangan
+            color_ratio = "#00ffcc" if ratio < 0.10 else "#ffd166"
+            thesis_points.append(f"📉 <b>LOW VOL RETRACEMENT:</b> Sedang koreksi ke Rp {curr_price:,.0f}, namun tekanan jual SANGAT KECIL. "
+                                 f"Value buangan hanya <b>Rp {val_down/1_000_000_000:,.1f} Miliar (<span style='color:{color_ratio}'>{ratio*100:.1f}%</span> dari saat ditarik naik)</b>.")
             
             has_news = ticker in intel_map
             if has_news:
-                score += 10
+                score += 20
                 thesis_points.append(f"📰 <b>CATALYST DETECTED:</b> {intel_map[ticker]['title'][:65]}...")
                 
+            thesis_points.append(f"<div style='margin-top:8px; padding:5px; border-top:1px dashed #333; font-family:JetBrains Mono; font-size:11px;'>"
+                                 f"💎 <b>KESIMPULAN:</b> Retracement sehat tanpa distribusi bandar. Probabilitas pantulan (bounce) tinggi. BUY AREA di kisaran Rp {curr_price:,.0f}."
+                                 f"</div>")
+
             final_thesis = "<br>".join(thesis_points)
-            porto = "TJL EXECUTE (Aggressive)" if score >= 80 else ("MONITOR (Medium)" if score >= 65 else "WAITING")
+            porto = "STRONG BUY (LVP)" if ratio < 0.10 else "BUY (LVP)"
             
-            # Risk Management Generation
-            stop_loss = orh if curr_price > orh else today_open
-            risk_pct = round(abs(curr_price - stop_loss) / curr_price * 100, 1)
-            target_price = curr_price + ((curr_price - stop_loss) * 2)
-            
-            plan_html = (
-                f"<div style='margin-top:8px; padding:5px; border-top:1px dashed #333; font-family:JetBrains Mono; font-size:11px;'>"
-                f"🛡️ <b>PLAN:</b> BUY {int(curr_price)} | "
-                f"<span style='color:#ff4d4d'>STOP {int(stop_loss)} (-{risk_pct}%)</span> | "
-                f"<span style='color:#00ffcc'>TARGET {int(target_price)}</span>"
-                f"</div>"
-            )
-            final_thesis += plan_html
-            
-            if score >= 65:
-                results.append({
-                    "SYMBOL": ticker, "CONF": min(score, 100), 
-                    "GAP_PCT": float(gap_pct), "VOL_SPIKE": float(vol_spike), 
-                    "PRICE": int(curr_price), "YDH": int(prev_high), "ORH": int(orh),
-                    "THESIS": final_thesis, "PORTO": porto,
-                    "RAW_INTRA": df_intra, "TJL_STATUS": "HOD BREAKOUT" if is_hod_break else "CONSOLIDATION"
-                })
+            results.append({
+                "SYMBOL": ticker, "CONF": min(score, 100), 
+                "VAL_UP_B": round(val_up / 1_000_000_000, 1), 
+                "VAL_DOWN_B": round(val_down / 1_000_000_000, 1),
+                "RATIO": round(ratio * 100, 1), 
+                "PRICE": int(curr_price), "HOD": int(hod_val), 
+                "THESIS": final_thesis, "PORTO": porto,
+                "RAW_INTRA": df_intra
+            })
         except: continue
         
-    return results, "MASSIVE MARKET SCANNING ACTIVE"
+    return results, "LVP SCANNER (VALUE > 50B | PULLBACK < 20%) ACTIVE"
 
 # --- 6. INTRADAY PIXEL CHART (5-MINUTE) ---
 def render_intraday_chart(target):
@@ -291,18 +271,15 @@ def render_intraday_chart(target):
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
                                  increasing_line_color='#00ffcc', decreasing_line_color='#ff0055', name="Price"), row=1, col=1)
     
-    fig.add_hline(y=target['YDH'], line_dash="dash", line_color="#ff0055", line_width=2, 
-                  annotation_text="YDH", annotation_position="top right", 
+    # Garis Intraday High (HOD) - Penanda Pucuk
+    fig.add_hline(y=target['HOD'], line_dash="dash", line_color="#ff0055", line_width=2, 
+                  annotation_text="High of Day (HOD)", annotation_position="top right", 
                   annotation_font_color="#ff0055", row=1, col=1)
     
-    fig.add_hline(y=target['ORH'], line_dash="dash", line_color="#ffd166", line_width=2, 
-                  annotation_text="ORH", annotation_position="bottom right", 
-                  annotation_font_color="#ffd166", row=1, col=1)
-
     colors_vol = ['#00ffcc' if r >= o else '#ff0055' for r, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors_vol, name='Volume'), row=2, col=1)
 
-    title_text = f"<b style='color: white; font-size: 20px;'>{target['SYMBOL']} (5-Min Chart)</b> <span style='color: #00ffcc; font-size:12px;'>| STATUS: {target['TJL_STATUS']}</span>"
+    title_text = f"<b style='color: white; font-size: 20px;'>{target['SYMBOL']}</b> <span style='color: #00ffcc; font-size:12px;'>| LVP RATIO: {target['RATIO']}%</span>"
     
     fig.update_layout(
         template="plotly_dark", height=450, 
@@ -315,32 +292,30 @@ def render_intraday_chart(target):
     return fig
 
 # --- 7. INTERFACE RENDERING LOGIC ---
-st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO - UNIFIED TJL</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO - LVP EDITION</div></div>', unsafe_allow_html=True)
 
 loading_placeholder = st.empty()
-loading_placeholder.markdown(f'<div class="blink">SCANNING {len(MASTER_TICKERS)}+ TICKERS: INTRADAY TJL ENGINE...</div>', unsafe_allow_html=True)
+loading_placeholder.markdown(f'<div class="blink">FILTERING {len(MASTER_TICKERS)}+ TICKERS: VALUE > 50B & LOW VOLUME PULLBACK...</div>', unsafe_allow_html=True)
 
-data, market_pulse = scan_tjl_market()
+data, market_pulse = scan_lvp_market()
 _, news_feed, _ = fetch_intel()
 loading_placeholder.empty()
 
 st.markdown(f"<div style='text-align:center; margin-bottom:20px; color:#00ffcc; font-family:Orbitron; letter-spacing:2px; font-size:14px;'>📡 {market_pulse}</div>", unsafe_allow_html=True)
 
 if data:
-    df_display = pd.DataFrame(data).sort_values(by="CONF", ascending=False)
+    df_display = pd.DataFrame(data).sort_values(by="RATIO", ascending=True) # Diurutkan dari Rasio Buangan Terkecil
     col_main, col_news = st.columns([3, 1])
     
     with col_main:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>⚡ TJL BREAKOUT SCANNER (REAL-TIME)</h3>", unsafe_allow_html=True)
-        # Menampilkan tabel tanpa kolom afiliasi grup
-        st.dataframe(df_display[["SYMBOL", "CONF", "GAP_PCT", "VOL_SPIKE", "PRICE", "YDH", "TJL_STATUS", "PORTO"]], column_config={
-            "CONF": st.column_config.ProgressColumn("CONF", min_value=0, max_value=100, format="%d%%"),
-            "GAP_PCT": st.column_config.NumberColumn("GAP UP", format="%.2f%%"),
-            "VOL_SPIKE": st.column_config.NumberColumn("VOL PWR", format="%.1fx 🌊"),
-            "PRICE": st.column_config.NumberColumn("PRICE (Rp)"),
-            "YDH": st.column_config.NumberColumn("YDH (Rp)"),
-            "TJL_STATUS": st.column_config.TextColumn("ACTION STATE"),
-            "PORTO": st.column_config.TextColumn("ALLOCATION")
+        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📉 LVP RETRACEMENT SCANNER</h3>", unsafe_allow_html=True)
+        st.dataframe(df_display[["SYMBOL", "RATIO", "VAL_UP_B", "VAL_DOWN_B", "PRICE", "HOD", "PORTO"]], column_config={
+            "RATIO": st.column_config.ProgressColumn("DUMP RATIO", min_value=0, max_value=20, format="%.1f%%"),
+            "VAL_UP_B": st.column_config.NumberColumn("VALUE NAIK (Miliar)", format="Rp %.1f B"),
+            "VAL_DOWN_B": st.column_config.NumberColumn("VALUE TURUN (Miliar)", format="Rp %.1f B 💧"),
+            "PRICE": st.column_config.NumberColumn("CURR PRICE"),
+            "HOD": st.column_config.NumberColumn("HOD"),
+            "PORTO": st.column_config.TextColumn("ACTION")
         }, use_container_width=True, hide_index=True, height=250)
 
         top_targets = df_display.head(4).to_dict('records')
@@ -352,18 +327,17 @@ if data:
                 batch = top_targets[i:i+2] 
                 for idx, target in enumerate(batch):
                     with cols[idx]:
-                        css_status = "pixel-value-up" if "BREAKOUT" in target['TJL_STATUS'] else "pixel-value-neutral"
                         st.markdown(f"""
                         <div class="pixel-container">
-                            <div class="pixel-metric"><span class="pixel-title">GAP UP</span><span class="pixel-value-up">+{target['GAP_PCT']:.2f}%</span></div>
-                            <div class="pixel-metric"><span class="pixel-title">VOL SURGE</span><span class="pixel-value-up">{target['VOL_SPIKE']:.1f}x</span></div>
-                            <div class="pixel-metric"><span class="pixel-title">VS YDH</span><span class="{ 'pixel-value-up' if target['PRICE'] > target['YDH'] else 'pixel-value-down' }">{'BREAK' if target['PRICE'] > target['YDH'] else 'REJECT'}</span></div>
-                            <div class="pixel-metric"><span class="pixel-title">MOMENTUM</span><span class="{css_status}">{target['TJL_STATUS']}</span></div>
+                            <div class="pixel-metric"><span class="pixel-title">DUMP RATIO</span><span class="pixel-value-up">{target['RATIO']}%</span></div>
+                            <div class="pixel-metric"><span class="pixel-title">VAL ACCUM</span><span class="pixel-value-up">{target['VAL_UP_B']}M</span></div>
+                            <div class="pixel-metric"><span class="pixel-title">VAL DISTRO</span><span class="pixel-value-neutral">{target['VAL_DOWN_B']}M</span></div>
+                            <div class="pixel-metric"><span class="pixel-title">VS HOD</span><span class="pixel-value-down">-{round(((target['HOD'] - target['PRICE'])/target['HOD'])*100, 1)}%</span></div>
                         </div>""", unsafe_allow_html=True)
                         fig = render_intraday_chart(target)
                         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px; margin-top:10px;'>📝 ALGORITHMIC EXECUTION THESIS</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px; margin-top:10px;'>📝 INSTITUTIONAL ANALYSIS THESIS</h3>", unsafe_allow_html=True)
         for row in top_targets:
             st.markdown(f"""
             <div class="thesis-box">
@@ -371,7 +345,7 @@ if data:
                     <span style="color:#ff0055; font-weight:bold; font-size:14px;">{row['SYMBOL']}</span>
                     <span style="color:#00ffcc; font-family: 'JetBrains Mono'; font-size: 10px;">{row['PORTO']}</span>
                 </div>
-                <div class="thesis-header">TJL ENTRY LOGIC:</div>
+                <div class="thesis-header">LVP ENTRY LOGIC:</div>
                 <div style="color:#e0e0e0;">{row['THESIS']}</div>
             </div>
             """, unsafe_allow_html=True)
@@ -388,6 +362,6 @@ if data:
             </div>''', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    st.info("Scanner sedang berjalan namun belum ada saham yang lolos kriteria agresif TJL saat ini.")
+    st.info("Scanner berjalan. Saat ini belum ada saham dengan Value > 50 Miliar yang mengalami koreksi kering (buangan di bawah 20%).")
 
-st.caption("PREDATOR QUANTUM PRO | UNIFIED INTRADAY SCALPING ENGINE")
+st.caption("PREDATOR QUANTUM PRO | LOW VOLUME PULLBACK (LVP) ENGINE")
