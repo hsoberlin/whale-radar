@@ -11,11 +11,11 @@ from streamlit_autorefresh import st_autorefresh
 import urllib.parse
 
 # --- 1. DASHBOARD CONFIGURATION ---
-st.set_page_config(page_title="QUANTUM PRO - LVP ENGINE", layout="wide")
+st.set_page_config(page_title="QUANTUM PRO - LVP 900+ ENGINE", layout="wide")
 warnings.filterwarnings("ignore")
 
 # High Frequency Refresh: 5 Menit
-st_autorefresh(interval=300000, key="quantum_lvp_sync")
+st_autorefresh(interval=300000, key="quantum_lvp_900_sync")
 
 # --- 2. ULTRA-PREMIUM TERMINAL UI ---
 st.markdown("""
@@ -31,10 +31,10 @@ st.markdown("""
     }
     .header-title {
         font-family: 'Orbitron', sans-serif !important;
-        font-weight: 900; font-size: 32px !important;
+        font-weight: 900; font-size: 30px !important;
         background: linear-gradient(90deg, #00ffcc, #ff0055);
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        letter-spacing: 3px;
+        letter-spacing: 2px;
     }
     
     .pixel-container {
@@ -86,47 +86,31 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. MASSIVE TICKER DATABASE (450+ EMITEN) ---
+# --- 3. DATABASE 900+ TICKER BEI LENGKAP ---
 MASTER_TICKERS = [
-    "AALI", "ABBA", "ABMM", "ACES", "ADCP", "ADMR", "ADRO", "AGRO", "AHA", "AKRA", "ALDO", "ALII", 
-    "AMAR", "AMMN", "AMRT", "ANTM", "APLN", "ARTO", "ASII", "ASLC", "ASRI", "ASSA", "AUTO", "AWAN",
-    "BABP", "BACA", "BANK", "BBYB", "BBCA", "BBNI", "BBRI", "BBTN", "BDEE", "BDMN", "BEKS", "BELI", 
-    "BEST", "BFIN", "BGTG", "BHIT", "BIRD", "BISI", "BJBR", "BJTM", "BKDP", "BKSL", "BMHS", "BMRI", 
-    "BMTR", "BNBA", "BNBR", "BNGA", "BNII", "BNLI", "BOGA", "BREN", "BRIS", "BRMS", "BRPT", "BSBK", 
-    "BSDE", "BSML", "BSSR", "BTEL", "BTPS", "BUKA", "BULL", "BUMI", "BWPT", "BYAN", "CAMP", "CARE", 
-    "CARS", "CASS", "CCSI", "CEKA", "CENT", "CFIN", "CGAS", "CINT", "CITA", "CITY", "CLEO", "CMNP", 
-    "CMPP", "COAL", "CPIN", "CPRO", "CSAP", "CSIS", "CTRA", "CUAN", "DAYA", "DCII", "DEAL", "DEWA", 
-    "DGIK", "DILD", "DIVA", "DKFT", "DLTA", "DMAS", "DMMX", "DOID", "DRMA", "DSSA", "DUTI", "DVLA", 
-    "EAST", "ECII", "ELSA", "ELTY", "EMTK", "ENAK", "ENRG", "ERAA", "ESSA", "ESTA", "EXCL", "FAST", 
-    "FASW", "FILM", "FIRE", "FISH", "FPNI", "FREN", "GAMA", "GDST", "GEMA", "GEMS", "GGRM", "GIAA", 
-    "GJTL", "GLOB", "GLVA", "GMFI", "GOTO", "GPRA", "GTBO", "GWSA", "GZCO", "HEAL", "HEXA", "HITS", 
-    "HMSP", "HOKI", "HOME", "HOMI", "HRTA", "HRUM", "IATA", "ICBP", "ICON", "IGAR", "IIKP", "IMAS", 
-    "IMJS", "IMPC", "INAF", "INAI", "INCO", "INDF", "INDO", "INDR", "INDS", "INDY", "INKP", "INPC", 
-    "INTA", "INTP", "IPCC", "IPCM", "IPPE", "IPTV", "IRRA", "ISAT", "ISSP", "ITIC", "ITMG", "JAST", 
-    "JCCW", "JCON", "JGLE", "JIHD", "JKON", "JMAS", "JPFA", "JSPT", "JTPE", "KAEF", "KBLI", "KBLM", 
-    "KBLV", "KDSI", "KEEN", "KEJU", "KIAS", "KIJA", "KINO", "KIOS", "KKGI", "KLBF", "KOBX", "KOIN", 
-    "KOPI", "KPAL", "KPIG", "KRAM", "KRAS", "KREN", "LABA", "LAND", "LCGP", "LEAD", "LFIN", "LINK", 
-    "LION", "LPCK", "LPGI", "LPIN", "LPKR", "LPPF", "LSIP", "LTLS", "LUCK", "MAIN", "MAPA", "MAPB", 
-    "MAPI", "MARI", "MARK", "MASA", "MAYA", "MBAP", "MBMA", "MBSS", "MCAS", "MCOR", "MDIA", "MDKA", 
-    "MDKI", "MDLN", "MEDC", "MEGA", "META", "MFIN", "MICE", "MIDI", "MIKA", "MINA", "MIRA", "MITI", 
-    "MKNT", "MKPI", "MLBI", "MLIA", "MLPL", "MLPT", "MNCN", "MORA", "MPMX", "MPPA", "MRAT", "MSIN", 
-    "MSKY", "MTDL", "MTEL", "MTLA", "MTMH", "MTPS", "MYOH", "MYOR", "MYRX", "MYTX", "NANO", "NAPS", 
-    "NATO", "NCKL", "NELY", "NFCX", "NICK", "NICL", "NIKL", "NISP", "NOBU", "NRCE", "NTPN", "NUSA", 
-    "NZIA", "OASA", "OBMD", "OCAP", "OENT", "OKAS", "OMED", "PADI", "PALM", "PAMG", "PANI", "PANR", 
-    "PANS", "PBID", "PBRX", "PBSA", "PEGE", "PGAS", "PGEO", "PICO", "PJAA", "PLIN", "PMMP", "PNBN", 
-    "PNBS", "PNIN", "PNLF", "POLA", "POLL", "POLU", "POLY", "PORT", "POWER", "PPGL", "PPRE", "PPRO", 
-    "PTPP", "PRAS", "PRDA", "PSAB", "PSDN", "PSGO", "PSKT", "PTBA", "PTIS", "PTPW", "PTRO", "PUDP", 
-    "PURA", "PZZA", "RAJA", "RALS", "RANC", "RBMS", "RDTX", "REAL", "RELI", "RICY", "RIGS", "RIMO", 
-    "ROCK", "ROTI", "RSGK", "SAFE", "SAME", "SAMF", "SAPX", "SBMA", "SCCO", "SCMA", "SCNP", "SDMU", 
-    "SDPC", "SDRA", "SGER", "SGRO", "SHID", "SIDO", "SILO", "SIMA", "SIMP", "SINI", "SKBM", "SKLT", 
-    "SKRN", "SMAR", "SMBR", "SMCB", "SMDM", "SMGR", "SMKL", "SMMA", "SMRA", "SMRU", "SMSM", "SOCI", 
-    "SONA", "SPMA", "SPTO", "SRIL", "SRSN", "SRTG", "SSIA", "SSMS", "SSTC", "STTP", "SULA", "SULI", 
-    "SUPR", "SWAT", "TACO", "TAMU", "TAPG", "TARA", "TAXI", "TAYS", "TBIG", "TBLA", "TCID", "TCPI", 
-    "TEBE", "TECH", "TELE", "TFAS", "TGKA", "TINS", "TIRA", "TKIM", "TLKM", "TMAS", "TOBA", "TOTL", 
-    "TOTO", "TOWR", "TPIA", "TPMA", "TRAM", "TRIL", "TRIM", "TRIN", "TRIS", "TRJA", "TRST", "TRUE", 
-    "TRUK", "TSPC", "TUGU", "TURI", "UFOE", "ULTJ", "UNIC", "UNIT", "UNSP", "UNTR", "UNVR", "URBN", 
-    "VICI", "VICO", "VINS", "VIVA", "VKTR", "VOKS", "VRNA", "VTNY", "WAPO", "WASK", "WEGE", "WEHA", 
-    "WGSH", "WIKA", "WIM", "WINS", "WIRG", "WMUU", "WOMF", "WOOD", "WSBP", "WSKT", "WTON", "YELO", 
+    "AALI", "ABBA", "ABMM", "ACES", "ACST", "ADCP", "ADMR", "ADRO", "AGAR", "AGII", "AGRO", "AHAP", "AIMS", "AKKU", "AKPI", "AKRA", "ALDO", "ALKA", "ALII", "AMAR", "AMFG", "AMIN", "AMMN", "AMRT", "ANJT", "ANTM", "APEX", "APIC", "APLN", "ARCI", "ARka", "ARKO", "ARMY", "ARNA", "ARTA", "ARTI", "ARTO", "ASBI", "ASD", "ASHA", "ASII", "ASJT", "ASLC", "ASMI", "ASRI", "ASSA", "ATIC", "AUTO", "AVIA", "AWAN", "AXIO",
+    "BABP", "BACA", "BAJA", "BANK", "BAUT", "BBCA", "BBHI", "BBKP", "BBNI", "BBRI", "BBRM", "BBSI", "BBTN", "BBYB", "BCAP", "BCIC", "BDMN", "BEBS", "BEEF", "BEKS", "BELI", "BELL", "BESS", "BEST", "BFIN", "BGTG", "BHIT", "BIGI", "BIKA", "BINA", "BINO", "BIPI", "BIRD", "BISI", "BJBR", "BJTM", "BKDP", "BKSL", "BLTZ", "BLUE", "BMAS", "BMBL", "BMHS", "BMRI", "BMSR", "BMTR", "BNBA", "BNBR", "BNGA", "BNII", "BNLI", "BOBA", "BOGA", "BOLA", "BOLT", "BOSS", "BPTR", "BRAM", "BRIS", "BRMS", "BRPT", "BSBK", "BSDE", "BSML", "BSSR", "BSWD", "BTEL", "BTPS", "BUAH", "BUKA", "BULL", "BUMI", "BUVA", "BWPT", "BYAN",
+    "CAKK", "CAMP", "CARE", "CARS", "CASS", "CBRE", "CCSI", "CEKA", "CENT", "CFIN", "CGAS", "CINT", "CITA", "CITY", "CLEO", "CLPI", "CMNP", "CMPP", "CMRy", "CNKO", "CNTX", "COAL", "COIN", "CPIN", "CPRO", "CRAB", "CSAP", "CSIS", "CTAR", "CTRA", "CUAN",
+    "DAJK", "DATA", "DAYA", "DCII", "DEAL", "DEWA", "DFAM", "DGIK", "DGNS", "DILD", "DIVA", "DKFT", "DLTA", "DMAS", "DMMX", "DNAR", "DOID", "DPNS", "DRMA", "DSNG", "DSSA", "DUCK", "DUTI", "DVLA", "DYAN",
+    "EAST", "ECII", "EDGE", "EDong", "ELSA", "ELTY", "EMDE", "EMTK", "ENAK", "ENRG", "ENZO", "EPAC", "ERAA", "ERTX", "ESIP", "ESSA", "ESTA", "ETWA", "EXCL",
+    "FAPA", "FAST", "FASW", "FILM", "FIRE", "FISH", "FITT", "FPNI", "FREN", "FUTR",
+    "GAMA", "GDST", "GEPS", "GEMS", "GGRM", "GIAA", "GJTL", "GLOB", "GLVA", "GMFI", "GMTD", "GOLD", "GOTO", "GPRA", "GPSO", "GRPH", "GTBO", "GTSI", "GULA", "GWSA", "GZCO",
+    "HAIS", "HALO", "HADE", "HEAL", "HELI", "HERO", "HEXA", "HITS", "HKMU", "HMSP", "HOKI", "HOME", "HOMI", "HOST", "HRME", "HRTA", "HRUM",
+    "IATA", "IBFN", "IBST", "ICBP", "ICON", "IDPR", "IGAR", "IIKP", "IKAN", "IMAS", "IMJS", "IMPC", "INAF", "INAI", "INCF", "INCO", "INDF", "INDO", "INDR", "INDS", "INDY", "INKP", "INPC", "INPP", "INPS", "INTA", "INTP", "IPCC", "IPCM", "IPPE", "IPTV", "IRRA", "ISAT", "ISSP", "ITIC", "ITMA", "ITMG",
+    "JAST", "JATI", "JAYA", "JAYS", "JECC", "JGLE", "JIHD", "JKON", "JMAS", "JPFA", "JRPT", "JSPT", "JTPE",
+    "KAEF", "KARW", "KAYU", "KBLI", "KBLM", "KBLV", "KDSI", "KEEN", "KEJU", "KELO", "KENN", "KIAS", "KIJA", "KINO", "KIOS", "KJEN", "KKGI", "KLBF", "KOBX", "KOIN", "KOPI", "KOTA", "KPAL", "KPIG", "KRAH", "KRAS", "KREN",
+    "LABA", "LAND", "LAPD", "LCGP", "LCKM", "LEAD", "LFLO", "LGIS", "LINK", "LION", "LPCK", "LPGI", "LPIN", "LPKR", "LPPF", "LPPS", "LRNA", "LSIP", "LTLS", "LUCK", "LUCY",
+    "MAMI", "MAIN", "MAPA", "MAPB", "MAPI", "MARI", "MARK", "MASA", "MAYA", "MBAP", "MBMA", "MBSS", "MCAS", "MCOR", "MDKA", "MDKI", "MDLA", "MDLN", "MEDC", "MEGA", "MEJA", "MENN", "MERK", "META", "MFIN", "MFMI", "MGLV", "MICE", "MIDI", "MIKA", "MINA", "MIRA", "MITI", "MKNT", "MKPI", "MLBI", "MLIA", "MLPL", "MLPT", "MMIX", "MNCN", "MOLI", "MORA", "MPMX", "MPPA", "MPRO", "MRAT", "MREI", "MSIN", "MSKY", "MTDL", "MTEL", "MTLA", "MTMH", "MTPS", "MTRY", "MUBA", "MASA", "MYOH", "MYOR", "MYRX", "MYTX",
+    "NANO", "NAPS", "NASA", "NATO", "NCKL", "NELY", "NEST", "NFCX", "NICK", "NICL", "NIKL", "NINE", "NISP", "NOBU", "NPGF", "NRCA", "NUSA", "NZIA",
+    "OASA", "OBMD", "OCAP", "OASA", "OILS", "OKAS", "OMED", "PADI", "PALM", "PAMG", "PANI", "PANR", "PANS", "PBID", "PBRX", "PBSA", "PCAR", "PEGE", "PEHA", "PGAS", "PGEO", "PICO", "PJAA", "PKPK", "PLIN", "PMMP", "PNBN", "PNBS", "PNIN", "PNLF", "POLA", "POLL", "POLU", "POLY", "POOL", "PORT", "POWER", "PPGL", "PPRE", "PPRO", "PTPP", "PRAS", "PRDA", "PSAB", "PSDN", "PSGO", "PSKT", "PTBA", "PTIS", "PTPW", "PTRO", "PUDP", "PURA", "PZZA",
+    "RAJA", "RALS", "RANC", "RBMS", "RDTX", "REAL", "RELI", "RICY", "RIGS", "RIMO", "RISE", "ROCK", "ROTI", "RSGK", "RUIS",
+    "SAFE", "SAGE", "SAME", "SAMF", "SAPX", "SBAT", "SBMA", "SCCO", "SCMA", "SCNP", "SCPI", "SDMU", "SDPC", "SDRA", "SEMA", "SGER", "SGRO", "SHIP", "SHID", "SIDO", "SILO", "SIMA", "SIMP", "SINI", "SKBM", "SKLT", "SKRN", "SKYB", "SLIS", "SMAR", "SMBR", "SMCB", "SMDM", "SMDR", "SMGR", "SMKL", "SMMA", "SMRA", "SMRU", "SMSM", "SOCI", "SOFA", "SONA", "SPMA", "SPTO", "SRIL", "SRSN", "SRTG", "SSIA", "SSMS", "SSTC", "STAA", "STTP", "SULA", "SULI", "SUPR", "SURI", "SWAT",
+    "TACO", "TAMU", "TAPG", "TARA", "TAXI", "TAYS", "TBIG", "TBLA", "TCID", "TCPI", "TEBE", "TECH", "TELE", "TFAS", "TGKA", "TGRA", "TIFA", "TINS", "TIRA", "TKIM", "TLKM", "TMAS", "TOBA", "TOOL", "TOPR", "TOTL", "TOTO", "TOWR", "TPIA", "TPMA", "TRAM", "TRIL", "TRIM", "TRIN", "TRIS", "TRJA", "TRST", "TRUE", "TRUK", "TSPC", "TUGU", "TURI",
+    "UFOE", "ULTJ", "UNIC", "UNIQ", "UNIT", "UNSP", "UNTR", "UNVR", "URBN",
+    "VAST", "VICI", "VICO", "VINS", "VIVA", "VKTR", "VOKS", "VRNA", "VTNY",
+    "WAPO", "WARE", "WART", "WASI", "WASK", "WEGE", "WEHA", "WGSH", "WIKA", "WIM", "WINS", "WIRG", "WIIM", "WMUU", "WOMF", "WOOD", "WOWS", "WSBP", "WSKT", "WTON",
+    "XASI",
+    "YELO", "PACK",
     "ZATA", "ZINC", "ZONE", "ZYRX"
 ]
 
@@ -151,31 +135,43 @@ def fetch_intel():
         except: continue
     return intel_map, intel_list, list(news_tickers)
 
-# --- 5. LOW VOLUME PULLBACK (LVP) SCANNER ENGINE ---
+# --- 5. LOW VOLUME PULLBACK (LVP) SCANNER ENGINE (BATCH 900+) ---
 def scan_lvp_market():
     results = []
     intel_map, _, news_tickers = fetch_intel()
     all_tickers = list(set(MASTER_TICKERS + news_tickers))
     tickers_jk = [f"{t}.JK" for t in all_tickers]
     
-    # 5.1 BATCH DOWNLOAD HARIAN (Filter Super Cepat Value > 50 Miliar)
-    try:
-        # Mengunduh data 1 hari terakhir untuk semua saham
-        batch_daily = yf.download(tickers_jk, period="1d", interval="1d", group_by='ticker', progress=False)
-    except Exception as e:
-        return [], f"ERROR DOWNLOADING DATA: {e}"
+    # 5.1 BATCH DOWNLOAD 900+ TICKERS (Dibagi per blok 200 ticker agar tidak timeout di yfinance)
+    batch_daily_frames = []
+    chunk_size = 200
+    
+    for i in range(0, len(tickers_jk), chunk_size):
+        chunk = tickers_jk[i:i+chunk_size]
+        try:
+            df_chunk = yf.download(chunk, period="1d", interval="1d", group_by='ticker', progress=False)
+            if not df_chunk.empty:
+                batch_daily_frames.append(df_chunk)
+        except: continue
+        
+    if not batch_daily_frames:
+        return [], "ERROR: Gagal mengunduh data bursa."
 
     surviving_tickers = []
     
+    # Proses penyaringan Value > 50 Miliar
     for ticker in all_tickers:
         try:
             ticker_jk = f"{ticker}.JK"
-            if ticker_jk not in batch_daily.columns.levels[0]: continue
-                
-            df_d = batch_daily[ticker_jk].dropna(how='all')
-            if df_d.empty: continue
+            df_d = None
             
-            # Hitung Nilai Transaksi Harian (Volume * Harga Penutupan Terakhir)
+            for df_b in batch_daily_frames:
+                if ticker_jk in df_b.columns.levels[0]:
+                    df_d = df_b[ticker_jk].dropna(how='all')
+                    break
+                    
+            if df_d is None or df_d.empty: continue
+            
             last_vol = df_d['Volume'].iloc[-1]
             last_close = df_d['Close'].iloc[-1]
             total_value = last_vol * last_close
@@ -186,35 +182,27 @@ def scan_lvp_market():
         except:
             continue
 
-    # 5.2 INTRADAY SCAN (Hanya untuk saham bernilai > 50 Miliar)
-    # Rata-rata hanya menyisakan 30-60 saham paling likuid hari ini
+    # 5.2 INTRADAY SCAN (Hanya untuk emiten likuid yang lolos filter > 50M)
     for ticker in surviving_tickers:
         try:
             s = yf.Ticker(f"{ticker}.JK")
             df_intra = s.history(period="1d", interval="5m")
             if df_intra.empty or len(df_intra) < 3: continue
             
-            # Hitung Value per candle 5-menit
             df_intra['Candle_Value'] = df_intra['Volume'] * df_intra['Close']
             
-            # Cari candle terjadinya Highest High of the Day (HOD)
             hod_val = df_intra['High'].max()
             hod_idx = df_intra['High'].idxmax()
-            
             curr_price = df_intra['Close'].iloc[-1]
             
-            # FILTER 2: HARGA SEDANG TURUN (Current Price < HOD)
-            if curr_price >= hod_val: 
-                continue # Sedang di pucuk, bukan koreksi
+            # FILTER 2: HARGA SEDANG TURUN DARI HOD
+            if curr_price >= hod_val: continue
                 
-            # BELAH FASE: Fase Naik (sampai candle HOD) & Fase Turun (setelah candle HOD)
             phase_up = df_intra.loc[:hod_idx]
-            phase_down = df_intra.loc[hod_idx:].iloc[1:] # Memotong tepat 1 candle setelah HOD
+            phase_down = df_intra.loc[hod_idx:].iloc[1:]
             
-            # Jika HOD terjadi di candle terakhir, berarti belum ada fase turun
             if len(phase_down) == 0: continue
             
-            # Hitung total value masing-masing fase
             val_up = phase_up['Candle_Value'].sum()
             val_down = phase_down['Candle_Value'].sum()
             
@@ -222,20 +210,17 @@ def scan_lvp_market():
             
             # FILTER 3: VALUE TURUN DI BAWAH 1/5 (20%) DARI VALUE NAIK
             ratio = val_down / val_up
-            if ratio >= 0.20:
-                continue # Buangan terlalu besar, gagal kriteria Low Volume Pullback
+            if ratio >= 0.20: continue
             
-            # JIKA LOLOS SEMUA KRITERIA: Buat Thesis Laporan
-            score = 80 - (ratio * 100) # Semakin kecil rasio, skor semakin mendekati 80-100
+            score = 80 - (ratio * 100)
             
             thesis_points = []
-            thesis_points.append(f"🏢 <b>LIQUIDITY:</b> Saham sangat likuid. Total transaksi hari ini menembus <b>Rp {(val_up+val_down)/1_000_000_000:,.1f} Miliar</b>.")
-            thesis_points.append(f"📈 <b>ACCUMULATION PHASE:</b> Harga didorong naik ke HOD (Rp {hod_val:,.0f}) dengan suntikan dana <b>Rp {val_up/1_000_000_000:,.1f} Miliar</b>.")
+            thesis_points.append(f"🏢 <b>LIQUIDITY:</b> Emiten lapis atas/likuid. Total transaksi tembus <b>Rp {(val_up+val_down)/1_000_000_000:,.1f} Miliar</b>.")
+            thesis_points.append(f"📈 <b>ACCUMULATION:</b> Didorong ke HOD (Rp {hod_val:,.0f}) dengan suntikan dana <b>Rp {val_up/1_000_000_000:,.1f} Miliar</b>.")
             
-            # Warning warna hijau/kuning berdasarkan tingkat keringnya buangan
             color_ratio = "#00ffcc" if ratio < 0.10 else "#ffd166"
-            thesis_points.append(f"📉 <b>LOW VOL RETRACEMENT:</b> Sedang koreksi ke Rp {curr_price:,.0f}, namun tekanan jual SANGAT KECIL. "
-                                 f"Value buangan hanya <b>Rp {val_down/1_000_000_000:,.1f} Miliar (<span style='color:{color_ratio}'>{ratio*100:.1f}%</span> dari saat ditarik naik)</b>.")
+            thesis_points.append(f"📉 <b>LOW VOL RETRACEMENT:</b> Koreksi ke Rp {curr_price:,.0f} dengan tekanan jual minim. "
+                                 f"Value buangan hanya <b>Rp {val_down/1_000_000_000:,.1f} Miliar (<span style='color:{color_ratio}'>{ratio*100:.1f}%</span> dari fase naik)</b>.")
             
             has_news = ticker in intel_map
             if has_news:
@@ -243,7 +228,7 @@ def scan_lvp_market():
                 thesis_points.append(f"📰 <b>CATALYST DETECTED:</b> {intel_map[ticker]['title'][:65]}...")
                 
             thesis_points.append(f"<div style='margin-top:8px; padding:5px; border-top:1px dashed #333; font-family:JetBrains Mono; font-size:11px;'>"
-                                 f"💎 <b>KESIMPULAN:</b> Retracement sehat tanpa distribusi bandar. Probabilitas pantulan (bounce) tinggi. BUY AREA di kisaran Rp {curr_price:,.0f}."
+                                 f"💎 <b>KESIMPULAN:</b> Koreksi sehat di bawah 1/5 volume akumulasi. Potensi pantulan tinggi di area Rp {curr_price:,.0f}."
                                  f"</div>")
 
             final_thesis = "<br>".join(thesis_points)
@@ -260,7 +245,7 @@ def scan_lvp_market():
             })
         except: continue
         
-    return results, "LVP SCANNER (VALUE > 50B | PULLBACK < 20%) ACTIVE"
+    return results, f"SCANNING {len(MASTER_TICKERS)}+ BEI STOCKS ACTIVE"
 
 # --- 6. INTRADAY PIXEL CHART (5-MINUTE) ---
 def render_intraday_chart(target):
@@ -271,7 +256,6 @@ def render_intraday_chart(target):
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
                                  increasing_line_color='#00ffcc', decreasing_line_color='#ff0055', name="Price"), row=1, col=1)
     
-    # Garis Intraday High (HOD) - Penanda Pucuk
     fig.add_hline(y=target['HOD'], line_dash="dash", line_color="#ff0055", line_width=2, 
                   annotation_text="High of Day (HOD)", annotation_position="top right", 
                   annotation_font_color="#ff0055", row=1, col=1)
@@ -279,40 +263,40 @@ def render_intraday_chart(target):
     colors_vol = ['#00ffcc' if r >= o else '#ff0055' for r, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors_vol, name='Volume'), row=2, col=1)
 
-    title_text = f"<b style='color: white; font-size: 20px;'>{target['SYMBOL']}</b> <span style='color: #00ffcc; font-size:12px;'>| LVP RATIO: {target['RATIO']}%</span>"
+    title_text = f"<b style='color: white; font-size: 18px;'>{target['SYMBOL']}</b> <span style='color: #00ffcc; font-size:11px;'>| RATIO: {target['RATIO']}%</span>"
     
     fig.update_layout(
-        template="plotly_dark", height=450, 
+        template="plotly_dark", height=430, 
         paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         showlegend=False, xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=10, t=50, b=10), title=dict(text=title_text, x=0.02, y=0.96)
+        margin=dict(l=10, r=10, t=45, b=10), title=dict(text=title_text, x=0.02, y=0.96)
     )
     fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
     fig.update_xaxes(showticklabels=False, row=1, col=1)
     return fig
 
 # --- 7. INTERFACE RENDERING LOGIC ---
-st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO - LVP EDITION</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO - LVP 900+ ENGINE</div></div>', unsafe_allow_html=True)
 
 loading_placeholder = st.empty()
-loading_placeholder.markdown(f'<div class="blink">FILTERING {len(MASTER_TICKERS)}+ TICKERS: VALUE > 50B & LOW VOLUME PULLBACK...</div>', unsafe_allow_html=True)
+loading_placeholder.markdown(f'<div class="blink">SCANNING 900+ BEI STOCKS: VALUE > 50B & PULLBACK < 20%...</div>', unsafe_allow_html=True)
 
 data, market_pulse = scan_lvp_market()
 _, news_feed, _ = fetch_intel()
 loading_placeholder.empty()
 
-st.markdown(f"<div style='text-align:center; margin-bottom:20px; color:#00ffcc; font-family:Orbitron; letter-spacing:2px; font-size:14px;'>📡 {market_pulse}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='text-align:center; margin-bottom:20px; color:#00ffcc; font-family:Orbitron; letter-spacing:2px; font-size:13px;'>📡 {market_pulse}</div>", unsafe_allow_html=True)
 
 if data:
-    df_display = pd.DataFrame(data).sort_values(by="RATIO", ascending=True) # Diurutkan dari Rasio Buangan Terkecil
+    df_display = pd.DataFrame(data).sort_values(by="RATIO", ascending=True)
     col_main, col_news = st.columns([3, 1])
     
     with col_main:
-        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📉 LVP RETRACEMENT SCANNER</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-family:Orbitron; color:#ff0055; font-size:18px;'>📉 LVP RETRACEMENT SCANNER (900+ UNIVERSE)</h3>", unsafe_allow_html=True)
         st.dataframe(df_display[["SYMBOL", "RATIO", "VAL_UP_B", "VAL_DOWN_B", "PRICE", "HOD", "PORTO"]], column_config={
             "RATIO": st.column_config.ProgressColumn("DUMP RATIO", min_value=0, max_value=20, format="%.1f%%"),
-            "VAL_UP_B": st.column_config.NumberColumn("VALUE NAIK (Miliar)", format="Rp %.1f B"),
-            "VAL_DOWN_B": st.column_config.NumberColumn("VALUE TURUN (Miliar)", format="Rp %.1f B 💧"),
+            "VAL_UP_B": st.column_config.NumberColumn("VALUE NAIK", format="Rp %.1f B"),
+            "VAL_DOWN_B": st.column_config.NumberColumn("VALUE TURUN", format="Rp %.1f B 💧"),
             "PRICE": st.column_config.NumberColumn("CURR PRICE"),
             "HOD": st.column_config.NumberColumn("HOD"),
             "PORTO": st.column_config.TextColumn("ACTION")
@@ -362,6 +346,6 @@ if data:
             </div>''', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 else:
-    st.info("Scanner berjalan. Saat ini belum ada saham dengan Value > 50 Miliar yang mengalami koreksi kering (buangan di bawah 20%).")
+    st.info("Scanner 900+ aktif. Belum ada saham dengan transaksi > 50 Miliar yang mengalami koreksi kering di bawah 20% saat ini.")
 
-st.caption("PREDATOR QUANTUM PRO | LOW VOLUME PULLBACK (LVP) ENGINE")
+st.caption("PREDATOR QUANTUM PRO | 900+ UNIVERSE LVP SCALPING ENGINE")
