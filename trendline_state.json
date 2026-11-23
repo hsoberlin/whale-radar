@@ -1,0 +1,142 @@
+{
+ "versi": "1.2 (21 Nov 2026)",
+ "modal_awal": 100000000.0,
+ "modal_masuk": 100000000.0,
+ "deposits": [],
+ "pending_dep": 0.0,
+ "cash": 84130632.0,
+ "reserved": 5468190.0,
+ "pos": {
+  "FUJI": {
+   "ed": "2026-11-20",
+   "ent": 294.20963172804534,
+   "lot": 353,
+   "cost": 10401178.0,
+   "sl0": 227.5029737896443,
+   "sl": 227.5029737896443,
+   "steps": 0,
+   "csteps": 0,
+   "hh": 308.0,
+   "sig_d": "2026-11-19",
+   "sell": false,
+   "src": "garis-1ATR",
+   "riil": {
+    "fills": [
+     [
+      99,
+      296
+     ],
+     [
+      98,
+      292
+     ],
+     [
+      96,
+      296
+     ],
+     [
+      60,
+      292
+     ]
+    ],
+    "avg_stockbit": 294.65
+   },
+   "neps": 0,
+   "zrun": 0
+  }
+ },
+ "pend_buy": {
+  "NTBK": {
+   "val": 1512674560.0,
+   "d": "2026-11-20",
+   "close": 64.0,
+   "lot": 780,
+   "limit": 70.0,
+   "reserve": 5468190.0,
+   "sl0": 54.34385622176259,
+   "line": 60.63265306122449,
+   "atr": 6.288796839461893,
+   "touches": 3
+  }
+ },
+ "log": [],
+ "skipped": [],
+ "events": [
+  {
+   "d": "2026-11-20",
+   "jenis": "BELI",
+   "kode": "FUJI",
+   "lot": 353,
+   "harga": 294.20963172804534,
+   "batas": 302.0
+  }
+ ],
+ "materai_total": 0.0,
+ "last_date": "2026-11-20",
+ "equity": [
+  {
+   "d": "2026-11-19",
+   "cash": 89081446.7,
+   "reserved": 10918553.3,
+   "mv": 0.0,
+   "eq": 100000000.0,
+   "npos": 0,
+   "dep": 0.0
+  },
+  {
+   "d": "2026-11-20",
+   "cash": 78662442.0,
+   "reserved": 10936380.0,
+   "mv": 9884000.0,
+   "eq": 99482822.0,
+   "npos": 1,
+   "dep": 0.0
+  }
+ ],
+ "ihsg_start": 5194.14111328125,
+ "start_date": "2026-11-19",
+ "last_report_date": "2026-11-20",
+ "last_report_pos": {
+  "FUJI": 226.0
+ },
+ "catatan": "Sistem Trendline v1.2 di akun FD (ANALISA FUNDAMENTAL) mulai 21 Nov 2026 (sebelumnya dicatat sebagai OBERLIN). Modal komitmen 100 jt: ukuran posisi 5 jt & hasil dihitung dari 100 jt; uang disetor bertahap (field disetor). FUJI 353 lot @294,65 (modal 10.401.178) dibeli 20 Nov saat v1.0; Senin 23 Nov dijual 173 lot (order GTC @262 sudah aktif) supaya sisa 180 lot = jatah 5 jt. SL otomatis Stockbit FUJI sudah dihapus user; SL ikut laporan malam (berbasis close). PGAS dipindah user ke akun OBERLIN (bukan sistem ini). Order NTBK 780 lot batas 70 (sinyal 20 Nov, v1.1 5 jt).",
+ "akun": "FD (ANALISA FUNDAMENTAL)",
+ "komitmen": 100000000.0,
+ "disetor": 43305978.0,
+ "setoran": [
+  {
+   "d": "2026-11-20",
+   "jumlah": 10401178.0,
+   "ket": "modal FUJI 353 lot"
+  },
+  {
+   "d": "2026-11-21",
+   "jumlah": 32904800.0,
+   "ket": "kas FD (Trading Balance) dialokasikan ke sistem"
+  }
+ ],
+ "pend_trim": {
+  "FUJI": 173
+ },
+ "last_aksi": [
+  "JUAL: -",
+  "JUAL SEBAGIAN: FUJI 173 lot @ 262 (penyesuaian ke jatah 5 jt, sisa 180 lot)",
+  "BELI di pre-opening (harga batas; GTC boleh, CANCEL 09.00 kalau belum terisi):",
+  "  NTBK 780 lot @ maks 70 (close 64) \u2192 jual jika close \u2264 54",
+  "Kas yang dikunci order beli: 5,5 jt",
+  "\ud83d\udcb0 Setor: tidak perlu, kas di akun cukup"
+ ],
+ "snap": {
+  "FUJI": 280.0,
+  "NTBK": 64.0
+ },
+ "ihsg_hist": {
+  "2026-11-13": 5344.40576171875,
+  "2026-11-16": 5320.98095703125,
+  "2026-11-17": 5304.7548828125,
+  "2026-11-18": 5247.87890625,
+  "2026-11-19": 5194.14111328125,
+  "2026-11-20": 5146.326171875
+ },
+ "last_week_close": "2026-11-22"
+}
