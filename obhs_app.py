@@ -1,1107 +1,1144 @@
 """
-PREDATOR QUANTUM PRO — SETUP BOARD EDITION
-==========================================
-Gabungan tampilan terminal Predator Quantum Pro dengan mesin seleksi Setup Board
-yang parameternya sudah diuji walk-forward.
+TRENDLINE ENGINE
+================================================================
+Mesin sistem "Breakout Garis Tren + Trailing Tangga" saham IDX.
+Dipakai bersama oleh backtest dan laporan harian, jadi angka live
+selalu konsisten dengan backtest yang sudah diaudit.
 
-Jalankan:  streamlit run predator_setup_board.py
-Kebutuhan: pip install streamlit yfinance pandas numpy plotly feedparser streamlit-autorefresh requests
+ATURAN v1.2 (21 Nov 2026) — akun FD (ANALISA FUNDAMENTAL), modal komitmen 100 jt
+- Sinyal: garis turun dari pivot ZigZag 3xATR(14), minimal 3 titik sentuh,
+  tidak ada CLOSE di atas garis (wick boleh). Sinyal saat close >= garis +
+  0,25 ATR dan rata-rata value 20 hari >= Rp1 M.
+- Beli: order pre-opening besok, harga batas = close sinyal +10% (dibulatkan
+  ke fraksi BEI), lot = 5 jt / close. Kas dikunci sebesar lot x batas.
+  Sinyal dilewati kalau kas kurang. Satu saham satu posisi.
+- SL (dicek di close, tidak pernah turun) = yang tertinggi dari:
+    a. garis sinyal - 1 ATR (dikunci di hari sinyal)
+    b. level garis merah tangga (lower high, 4 ukuran swing, skala log)
+       yang tembus setelah sinyal, dikunci di hari tembus
+    c. high tertinggi sejak beli - 4 ATR
+- Jual: besok open setelah close < SL. Kalau volume 0 atau ARB terkunci
+  (bar datar turun >= 6,5%), penjualan ditunda.
+- Pagar jual (v1.1): kalau dalam satu hari minimal 5 posisi close < SL DAN
+  IHSG hari itu turun >= 1%, jual posisi-posisi itu ditunda satu hari
+  (sekali per posisi). Besok sore dicek ulang terhadap SL.
+- Suspensi (v1.2): posisi yang sudah kena suspensi ke-3 selama dipegang (volume 0)
+  dijual di open hari pertama dibuka (antri pre-opening di harga batas ARB).
+- Modal komitmen: ukuran posisi & hasil dihitung dari komitmen 100 jt; uang
+  disetor bertahap sesuai kebutuhan order (baris "Setor sebelum pre-opening").
+- Biaya: beli 0,15%, jual 0,25%, materai Rp10.000 per hari kalau nilai
+  transaksi hari itu > Rp10 jt.
+- Red-flag & riwayat suspend hanya PERINGATAN, bukan larangan beli.
 """
+import json
+import math
+from datetime import datetime
 
-import streamlit as st
-import yfinance as yf
-import pandas as pd
 import numpy as np
-import warnings, re, json, os, time
-import urllib.parse
-from datetime import datetime, timedelta, timezone
-from collections import Counter, defaultdict
+import pandas as pd
 
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+VERSION = "1.2 (21 Nov 2026)"
 
-try:
-    import feedparser
-    ADA_FEED = True
-except Exception:
-    ADA_FEED = False
-try:
-    import requests
-    ADA_REQ = True
-except Exception:
-    ADA_REQ = False
-try:
-    from streamlit_autorefresh import st_autorefresh
-    ADA_AUTOREFRESH = True
-except Exception:
-    ADA_AUTOREFRESH = False
+# ---------------------------------------------------------------- PARAMETER
+START_DATA = "2019-01-01"      # WAJIB tetap: pivot & ATR dihitung dari awal data
+MULT = 3.0                     # pivot ZigZag garis sinyal (x ATR)
+MIN_TOUCH = 3
+TOL_PIVOT = 0.5
+MAX_ANCHOR = 8
+MAX_AGE_LINE = 250
+BUF_BREAK = 0.25
+VAL_MIN = 1e9
+SL_ATR0 = 1.0
+CHAND_K = 4.0
+LIMIT_PCT = 0.10
+ALLOC = 5_000_000
+FENCE_N = 5                    # pagar jual: minimal posisi kena SL di hari yang sama
+FENCE_IHSG = -0.01             # pagar jual: IHSG hari itu turun >= 1%
+IHSG_RET = None                # pd.Series return harian IHSG (diisi run_nightly / backtest)
+SUSP_EXIT_N = 3                # v1.2: jual saat dibuka setelah suspensi ke-N selama dipegang (0 = mati)
+AKUN = "FD"
+AKUN_NAMA = "FUNDAMENTAL"
+KOMITMEN = 100_000_000
+MODAL_AWAL = 100_000_000
+FEE_B, FEE_S = 0.0015, 0.0025
+MATERAI, BATAS_MATERAI = 10_000, 10_000_000
+ARB_LOCK = -0.065
+RED_SCALES = [5.0, 3.0, 1.5, 0.75]
+RED_AGE = {5.0: 750, 3.0: 400, 1.5: 200, 0.75: 100}
+RED_BUF = 0.25
+SUSP_WARN_LB = 120
 
-warnings.filterwarnings("ignore")
-st.set_page_config(page_title="PREDATOR QUANTUM PRO", layout="wide")
+RED_FLAG = set("AGAR DOOH BIKE AYAM MGLV VISI JARR PGUN TEBE MDIA SINI FORU PIPA JGLE "
+               "VKTR SGER IRSX BREN TPIA MMIX PEGE MEJA PACK".split())
 
-WIB = timezone(timedelta(hours=7))
-JURNAL_FILE = "jurnal.csv"
-
-# =====================================================================
-# TAMPILAN
-# =====================================================================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@500;800&family=Inter:wght@400;600;900&display=swap');
-.stApp { background-color:#020406; color:#fff; }
-.header-container{padding:14px;background:rgba(0,255,204,.02);border-radius:10px;
-  border:1px solid rgba(0,255,204,.1);text-align:center;margin-bottom:14px}
-.header-title{font-family:'Orbitron',sans-serif!important;font-weight:900;font-size:34px!important;
-  background:linear-gradient(90deg,#00ffcc,#ff0055);-webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;letter-spacing:5px}
-.header-sub{font-family:'JetBrains Mono';font-size:10px;color:#7c8a94;letter-spacing:2px;margin-top:4px}
-.macro-strip{display:flex;justify-content:space-around;background:#0a0e14;padding:9px;
-  border-radius:5px;border:1px solid #333;margin-bottom:14px;flex-wrap:wrap;gap:6px}
-.macro-item{font-family:'JetBrains Mono';font-size:12px;text-align:center}
-.macro-label{font-size:9px;color:#888;display:block;margin-bottom:2px;letter-spacing:1px}
-.macro-val-up{color:#00ffcc;font-weight:bold}
-.macro-val-down{color:#ff0055;font-weight:bold}
-.pixel-container{display:flex;gap:4px;margin-bottom:4px;background:#0a0e14;padding:5px;
-  border-radius:5px;border:1px solid #333}
-.pixel-metric{flex:1;text-align:center;font-family:'JetBrains Mono'}
-.pixel-title{font-size:8px;color:#888;display:block;margin-bottom:2px;letter-spacing:1px}
-.pixel-value-up{color:#00ffcc;font-weight:900;font-size:11px;text-shadow:0 0 5px rgba(0,255,204,.5)}
-.pixel-value-down{color:#ff0055;font-weight:900;font-size:11px;text-shadow:0 0 5px rgba(255,0,85,.5)}
-.pixel-value-neutral{color:#ffd166;font-weight:900;font-size:11px}
-.thesis-box{background:rgba(2,20,20,.6);border-left:2px solid #00ffcc;border-right:1px solid #333;
-  border-top:1px solid #333;border-bottom:1px solid #333;padding:11px;border-radius:4px;
-  margin-top:8px;font-family:'Inter',sans-serif;font-size:12px;line-height:1.55;color:#ccc}
-.thesis-header{font-family:'Orbitron';font-size:10px;color:#00ffcc;margin-bottom:5px;letter-spacing:1px}
-.news-scroll-box{max-height:520px;overflow-y:auto}
-.news-box{background:#0a0e14;border-left:3px solid #ff4d4d;padding:6px;margin-bottom:6px;border-radius:4px}
-.news-box:hover{border-left:3px solid #00ffcc;background:#111a21}
-.news-topic-header{font-family:'Orbitron';font-size:9px;color:#00ffcc;font-weight:bold}
-.news-text{font-family:'Inter',sans-serif;font-size:10px;color:#e0e0e0}
-.news-text a{text-decoration:none;color:inherit}
-.blink{animation:blinker 1s linear infinite;font-family:'Orbitron';font-size:13px;color:#ff0055;
-  text-align:center;letter-spacing:2px;margin:16px 0}
-@keyframes blinker{50%{opacity:.35;color:#00ffcc}}
-.warnbox{background:rgba(255,0,85,.06);border-left:3px solid #ff0055;padding:9px 12px;
-  border-radius:4px;font-family:'Inter';font-size:11.5px;color:#c9d3d8;margin-bottom:12px}
-.warnbox b{color:#fff}
-[data-testid="stDataFrame"]{border:1px solid #333!important}
-[data-testid="stDataFrame"] div[role="columnheader"]{background:#0a0e14!important;color:#00ffcc!important;
-  font-family:'Orbitron'!important;font-weight:800!important;border-bottom:1px solid #444!important}
-[data-testid="stDataFrame"] div[role="gridcell"]{background:#020406!important;color:#e0e0e0!important;
-  font-family:'JetBrains Mono'!important;border-bottom:1px solid #222!important}
-[data-testid="stDataFrame"] div[role="row"]:hover div[role="gridcell"]{background:rgba(0,255,204,.1)!important}
-section[data-testid="stSidebar"]{background:#060a0f;border-right:1px solid #222}
-</style>
-""", unsafe_allow_html=True)
-
-# =====================================================================
-# PETA GRUP, SEKTOR, TEMA
-# =====================================================================
-MASTER_AFILIASI = {
-    "BREN":"PRAJOGO PANGESTU","TPIA":"PRAJOGO PANGESTU","CUAN":"PRAJOGO PANGESTU","BRPT":"PRAJOGO PANGESTU",
-    "PTRO":"PRAJOGO PANGESTU","CGAS":"PRAJOGO PANGESTU","CDIA":"PRAJOGO PANGESTU","GZCO":"PRAJOGO PANGESTU",
-    "BUMI":"BAKRIE","BRMS":"BAKRIE","ENRG":"BAKRIE","DEWA":"BAKRIE","BNBR":"BAKRIE","UNSP":"BAKRIE",
-    "VIVA":"BAKRIE","MDIA":"BAKRIE","JGLE":"BAKRIE","ALII":"BAKRIE","ELTY":"BAKRIE","BTEL":"BAKRIE","VKTR":"BAKRIE",
-    "AMMN":"SALIM","INDF":"SALIM","ICBP":"SALIM","LSIP":"SALIM","SIMP":"SALIM","META":"SALIM",
-    "ROTI":"SALIM","IMAS":"SALIM","DNET":"SALIM","MEDC":"SALIM",
-    "DSSA":"SINAR MAS","BSDE":"SINAR MAS","INKP":"SINAR MAS","TKIM":"SINAR MAS","SMMA":"SINAR MAS",
-    "DUTI":"SINAR MAS","SMAR":"SINAR MAS","FREN":"SINAR MAS","DMAS":"SINAR MAS",
-    "PANI":"AGUAN","MKPI":"AGUAN","ASRI":"AGUAN","CBDK":"AGUAN",
-    "ADRO":"BOY THOHIR","ADMR":"BOY THOHIR","ESSA":"BOY THOHIR","MBMA":"BOY THOHIR","MDKA":"BOY THOHIR",
-    "DRMA":"TP RACHMAT","TAPG":"TP RACHMAT","DSNG":"TP RACHMAT","ASSA":"TP RACHMAT","ASLC":"TP RACHMAT",
-    "RAJA":"HAPPY HAPSORO","CBRE":"HAPPY HAPSORO","PSAB":"HAPPY HAPSORO","MINA":"HAPPY HAPSORO","OASA":"HAPPY HAPSORO",
-    "JIHD":"TOMY WINATA","SCBD":"TOMY WINATA","TINY":"TOMY WINATA",
-    "KPIG":"MNC","BHIT":"MNC","MNCN":"MNC","IPTV":"MNC","BABP":"MNC","BCAP":"MNC",
-    "LPKR":"LIPPO","LPPF":"LIPPO","MLPL":"LIPPO","MPPA":"LIPPO","SILO":"LIPPO","LPCK":"LIPPO","MLPT":"LIPPO",
-    "GOTO":"TECH","EMTK":"EMTEK","SCMA":"EMTEK","BUKA":"TECH","ARTO":"TECH",
-    "BBRI":"BUMN","BMRI":"BUMN","BBNI":"BUMN","BBTN":"BUMN","BRIS":"BUMN","TLKM":"BUMN","ANTM":"BUMN",
-    "PTBA":"BUMN","TINS":"BUMN","PGAS":"BUMN","SMGR":"BUMN","JSMR":"BUMN","PGEO":"BUMN","MTEL":"BUMN",
-    "WIKA":"BUMN KARYA","PTPP":"BUMN KARYA","ADHI":"BUMN KARYA","WTON":"BUMN KARYA","WEGE":"BUMN KARYA","PPRE":"BUMN KARYA",
-    "ASII":"ASTRA","UNTR":"ASTRA","AALI":"ASTRA","ASGR":"ASTRA","AUTO":"ASTRA",
-    "BBCA":"DJARUM","TOWR":"DJARUM","SUPR":"DJARUM",
-    "PNBN":"PANIN","PNIN":"PANIN","PNLF":"PANIN","CFIN":"PANIN",
-    "AMRT":"ALFAMART","MIDI":"ALFAMART","BUDI":"SUNGAI BUDI","TBLA":"SUNGAI BUDI",
-    "MEGA":"CT CORP","BBHI":"CT CORP","SRTG":"SARATOGA","TBIG":"SARATOGA","MPMX":"SARATOGA",
-}
-
-SECTOR_MAP = {
-    "BBCA":"FINANCE","BBRI":"FINANCE","BMRI":"FINANCE","BBNI":"FINANCE","BBTN":"FINANCE","BRIS":"FINANCE",
-    "ARTO":"FINANCE","BJBR":"FINANCE","BJTM":"FINANCE","TUGU":"FINANCE","PNBN":"FINANCE","BDMN":"FINANCE",
-    "BBHI":"FINANCE","SRTG":"FINANCE","ADMF":"FINANCE","BNGA":"FINANCE","BNII":"FINANCE","NISP":"FINANCE",
-    "ADRO":"ENERGY","PTBA":"ENERGY","ITMG":"ENERGY","BYAN":"ENERGY","HRUM":"ENERGY","INDY":"ENERGY",
-    "MEDC":"ENERGY","ELSA":"ENERGY","PGAS":"ENERGY","AKRA":"ENERGY","DOID":"ENERGY","BUMI":"ENERGY",
-    "ENRG":"ENERGY","RAJA":"ENERGY","ADMR":"ENERGY","GEMS":"ENERGY","BSSR":"ENERGY","PGEO":"ENERGY","TOBA":"ENERGY",
-    "ANTM":"BASIC-MAT","MDKA":"BASIC-MAT","INCO":"BASIC-MAT","TINS":"BASIC-MAT","MBMA":"BASIC-MAT",
-    "NCKL":"BASIC-MAT","BRMS":"BASIC-MAT","PSAB":"BASIC-MAT","INKP":"BASIC-MAT","TKIM":"BASIC-MAT",
-    "SMGR":"BASIC-MAT","INTP":"BASIC-MAT","TPIA":"BASIC-MAT","BRPT":"BASIC-MAT","ESSA":"BASIC-MAT",
-    "LTLS":"BASIC-MAT","AMMN":"BASIC-MAT","ARCI":"BASIC-MAT","HRTA":"BASIC-MAT",
-    "TLKM":"INFRA","ISAT":"INFRA","EXCL":"INFRA","FREN":"INFRA","JSMR":"INFRA","TBIG":"INFRA",
-    "TOWR":"INFRA","MTEL":"INFRA","META":"INFRA","PPRE":"INFRA","ADHI":"INFRA","WIKA":"INFRA","PTPP":"INFRA",
-    "ICBP":"CONSUMER","INDF":"CONSUMER","UNVR":"CONSUMER","MYOR":"CONSUMER","AMRT":"CONSUMER","MIDI":"CONSUMER",
-    "ACES":"CONSUMER","MAPI":"CONSUMER","MAPA":"CONSUMER","CPIN":"CONSUMER","JPFA":"CONSUMER","GGRM":"CONSUMER",
-    "HMSP":"CONSUMER","KLBF":"CONSUMER","SIDO":"CONSUMER","AUTO":"CONSUMER","ASII":"CONSUMER","ERAA":"CONSUMER",
-    "BSDE":"PROPERTY","CTRA":"PROPERTY","SMRA":"PROPERTY","PWON":"PROPERTY","ASRI":"PROPERTY","DILD":"PROPERTY",
-    "PANI":"PROPERTY","APLN":"PROPERTY","LPCK":"PROPERTY","LPKR":"PROPERTY","BEST":"PROPERTY","DMAS":"PROPERTY",
-    "GOTO":"TECH","BUKA":"TECH","EMTK":"TECH","SCMA":"TECH","WIRG":"TECH","DCII":"TECH","MTDL":"TECH",
-    "ASSA":"TRANS","BIRD":"TRANS","SMDR":"TRANS","TMAS":"TRANS","GIAA":"TRANS","IATA":"TRANS",
-    "AALI":"PLANTATION","LSIP":"PLANTATION","SIMP":"PLANTATION","SMAR":"PLANTATION","DSNG":"PLANTATION",
-    "TAPG":"PLANTATION","SGRO":"PLANTATION","UNTR":"HEAVY-EQP","PTRO":"HEAVY-EQP",
-}
-
-THEMES = {
-    "batubara": ["ADRO","ADMR","PTBA","ITMG","HRUM","BUMI","GEMS","BSSR","MBAP","DOID","TOBA","BYAN"],
-    "emas":     ["ANTM","MDKA","BRMS","PSAB","ARCI","HRTA"],
-    "tembaga":  ["MDKA","BRMS","AMMN"],
-    "nikel":    ["INCO","ANTM","NICL","MBMA","NCKL"],
-    "minyak":   ["MEDC","ELSA","ENRG","PGAS","RAJA"],
-    "cpo":      ["AALI","LSIP","SIMP","SMAR","DSNG","TAPG","SGRO","PALM","ANJT","BWPT"],
-    "kertas":   ["INKP","TKIM","FASW"],
-    "timah":    ["TINS"],
-}
-# Hanya tema dengan acuan harga gratis. Sisanya sengaja dibiarkan netral —
-# tidak ada proxy batubara/nikel/CPO yang bisa diandalkan tanpa berlangganan.
-COMMODITY_PROXY = {"emas": "GC=F", "tembaga": "HG=F", "minyak": "CL=F"}
-
-RSS_LINKS = [
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/701647301640953919",
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/701647301640956058",
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/17720372188069162265",
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/4715023400486420700",
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/6157427371671042291",
-    "https://www.google.co.id/alerts/feeds/16876890487441803706/8676695815866551512",
-]
-
-# =====================================================================
-# PARAMETER SELEKSI  (sesuai SPESIFIKASI-PARAMETER.md)
-# =====================================================================
-STOCH_SCORE = {
-    "GOLDEN CROSS DI JENUH JUAL": 100,
-    "OVERSOLD & MULAI NAIK":       92,
-    "CROSS UP DARI BAWAH":         82,
-    "JENUH JUAL, BELUM BERBALIK":  70,
-    "NAIK DARI ZONA BAWAH":        60,
-    "NAIK DI ZONA TENGAH":         36,
-    "MELEMAH":                      0,
-    "JENUH BELI":                   0,
-    "JENUH BELI, MULAI TURUN":      0,
-    "N/A":                         30,
-}
-STOCH_BURUK = {"MELEMAH", "JENUH BELI", "JENUH BELI, MULAI TURUN"}
-
-PRESETS = {
-    "SEIMBANG":         {"stoch":30,"vol":30,"akum":18,"peer":12,"struktur":15,"tema":5},
-    "JENUH JUAL":       {"stoch":45,"vol":25,"akum":10,"peer":6, "struktur":10,"tema":0},
-    "AKUMULASI SENYAP": {"stoch":18,"vol":35,"akum":40,"peer":10,"struktur":15,"tema":5},
-    "KEJAR LAGGARD":    {"stoch":15,"vol":25,"akum":15,"peer":45,"struktur":10,"tema":5},
-    "VOLUME BICARA":    {"stoch":20,"vol":50,"akum":25,"peer":6, "struktur":15,"tema":0},
-}
-
-FALLBACK_UNIVERSE = sorted(set(list(MASTER_AFILIASI) + list(SECTOR_MAP) +
-    [t for v in THEMES.values() for t in v]))
-
-# =====================================================================
-# PENGAMBILAN DATA
-# =====================================================================
-@st.cache_data(ttl=86400, show_spinner=False)
-def ambil_universe():
-    """Daftar emiten IDX dari screener TradingView. Gagal -> daftar bawaan."""
-    if not ADA_REQ:
-        return FALLBACK_UNIVERSE, "bawaan"
-    try:
-        body = {"filter":[{"left":"type","operation":"equal","right":"stock"}],
-                "columns":["name","sector"],"range":[0,1200],
-                "sort":{"sortBy":"name","sortOrder":"asc"}}
-        r = requests.post("https://scanner.tradingview.com/indonesia/scan", json=body, timeout=25,
-                          headers={"User-Agent":"Mozilla/5.0"})
-        rows = r.json().get("data", [])
-        tics, sect = [], {}
-        for d in rows:
-            kode = d["d"][0]
-            if kode and kode.isalpha() and 3 <= len(kode) <= 5:
-                tics.append(kode)
-                if d["d"][1]:
-                    sect.setdefault(kode, d["d"][1])
-        if len(tics) > 200:
-            for k, v in sect.items():
-                SECTOR_MAP.setdefault(k, v)
-            return sorted(set(tics)), "TradingView"
-    except Exception:
-        pass
-    return FALLBACK_UNIVERSE, "bawaan"
+IDX_TICKERS_ALL = """AADI, AALI, ABDA, ABMM, ACES, ACRO, ACST, ADCP, ADES, ADHI, ADMF, ADMG,
+ADMR, ADRO, AGAR, AGII, AGRO, AGRS, AHAP, AISA, AKKU, AKPI, AKRA, AKSI,
+ALDO, ALII, ALKA, ALMI, AMAG, AMAN, AMAR, AMFG, AMIN, AMMN, AMMS, AMOR,
+AMRT, ANDI, ANJT, ANTM, APEX, APIC, APII, APLI, APLN, ARCI, AREA, ARGO,
+ARII, ARKO, ARNA, ARTA, ARTO, ASDM, ASGR, ASHA, ASII, ASJT, ASLC, ASLI,
+ASPI, ASPR, ASRI, ASRM, ASSA, ATAP, ATIC, ATLA, AUTO, AVIA, AWAN, AXIO,
+AYAM, BABP, BABY, BACA, BACH, BAIK, BAJA, BALI, BANK, BATR, BAUT, BAYU,
+BBCA, BBHI, BBKP, BBLD, BBMD, BBNI, BBRI, BBRM, BBSI, BBSS, BBTN, BBYB,
+BCAP, BCIC, BDKR, BDMN, BEBS, BEEF, BEER, BEKS, BELI, BELL, BESS, BEST,
+BFIN, BGTG, BHAT, BHIT, BIKE, BINA, BINO, BIPI, BIPP, BIRD, BISI, BJBR,
+BJTM, BKDP, BKSL, BKSW, BLES, BLOG, BLTA, BLTZ, BLUE, BMAS, BMHS, BMRI,
+BMSR, BMTR, BNBA, BNBR, BNGA, BNII, BNLI, BOAT, BOBA, BOGA, BOLA, BOLT,
+BPFI, BPII, BPTR, BRAM, BREN, BRIS, BRMS, BRNA, BRPT, BSBK, BSDE, BSIM,
+BSML, BSSR, BSWD, BTEK, BTON, BTPN, BTPS, BUAH, BUDI, BUKA, BUKK, BULL,
+BUMI, BUVA, BVIC, BWPT, BYAN, CAKK, CAMP, CARE, CARS, CASA, CASH, CASS,
+CBDK, CBPE, CBRE, CBUT, CCSI, CDIA, CEKA, CENT, CFIN, CGAS, CHEK, CHIP,
+CINT, CITA, CITY, CLAY, CLEO, CLPI, CMNP, CMNT, CMPP, CMRY, CNKO, CNMA,
+COAL, COCO, COIN, CPIN, CPRO, CRAB, CRSN, CSAP, CSIS, CSRA, CTBN, CTRA,
+CUAN, CYBR, DAAZ, DADA, DART, DATA, DAYA, DCII, DEPO, DEWA, DEWI, DGIK,
+DGNS, DGWG, DILD, DIVA, DKFT, DKHH, DLTA, DMAS, DMMX, DMND, DNAR, DNET,
+DOID, DOOH, DOSS, DPUM, DRMA, DSFI, DSNG, DSSA, DUTI, DVLA, DWGL, DYAN,
+EAST, ECII, EDGE, EKAD, ELIT, ELPI, ELSA, ELTY, EMAS, EMDE, EMMI, EMTK,
+ENAK, ENRG, EPAC, EPMT, ERAA, ERAL, ERTX, ESSA, ESTA, ESTI, EURO, EXCL,
+FAPA, FAST, FASW, FILM, FIRE, FISH, FITT, FMII, FOLK, FORE, FORU, FPNI,
+FUJI, FUTR, FWCT, GDST, GDYR, GEMS, GGRM, GGRP, GHON, GIAA, GJTL, GLOB,
+GLVA, GMFI, GMTD, GOLD, GOLF, GOOD, GOTO, GPRA, GPSO, GRIA, GRPM, GSMF,
+GTBO, GTRA, GTSI, GULA, GUNA, GWSA, GZCO, HAIS, HAJJ, HALO, HATM, HBAT,
+HDFA, HEAL, HELI, HERO, HEXA, HILL, HITS, HMSP, HOKI, HOMI, HOPE, HRME,
+HRTA, HRUM, HUMI, HYGN, IATA, IBOS, IBST, ICBP, IDPR, IFII, IFSH, IGAR,
+IKAI, IKBI, IKPM, IMAS, IMJS, IMPC, INAF, INCO, INDF, INDO, INDR, INDS,
+INDY, INET, INKP, INOV, INPC, INPP, INPS, INRU, INTA, INTD, INTP, IOTF,
+IPAC, IPCC, IPCM, IPOL, IPTV, IRRA, IRSX, ISAT, ISSP, ITIC, ITMA, ITMG,
+JARR, JATI, JAWA, JECC, JECX, JELI, JGLE, JIHD, JKON, JMAS, JPFA, JRPT,
+JSMR, JSPT, JTPE, KAEF, KAQI, KBAG, KBLI, KBLM, KBLV, KDSI, KDTN, KEEN,
+KEJU, KETR, KIAS, KIJA, KING, KINO, KKGI, KLAS, KLBF, KMDS, KMTR, KOBX,
+KOCI, KOKA, KONI, KOTA, KPIG, KRAS, KREN, KSIX, LABS, LAND, LAPD, LEAD,
+LFLO, LIFE, LINK, LION, LIVE, LMPI, LPCK, LPGI, LPIN, LPKR, LPLI, LPPF,
+LPPS, LSIP, LTLS, LUCY, MAHA, MAIN, MAPA, MAPB, MAPI, MARK, MASB, MAXI,
+MAYA, MBAP, MBMA, MBSS, MCAS, MCOL, MCOR, MDIA, MDIY, MDKA, MDKI, MDLA,
+MDLN, MDRN, MEDC, MEGA, MEJA, MERK, MFMI, MGLV, MGNA, MGRO, MHKI, MICE,
+MIDI, MIKA, MINA, MINE, MKAP, MKPI, MKTR, MLBI, MLIA, MLPL, MLPT, MMIX,
+MMLP, MNCN, MOLI, MORA, MPIX, MPMX, MPPA, MPRO, MPXL, MRAT, MREI, MSIN,
+MSJA, MSKY, MSTI, MTDL, MTEL, MTFN, MTLA, MTMH, MTPS, MTWI, MUTU, MYOH,
+MYOR, MYTX, NAIK, NASA, NATO, NAYZ, NCKL, NELY, NEST, NETV, NFCX, NICE,
+NICK, NICL, NIKL, NINE, NIRO, NISP, NOBU, NPGF, NRCA, NSSS, NTBK, NZIA,
+OASA, OBAT, OBMD, OKAS, OMED, OMRE, PACK, PADA, PADI, PALM, PAMG, PANI,
+PANR, PANS, PART, PBID, PBRX, PBSA, PDES, PDPP, PEGE, PEHA, PEVE, PGAS,
+PGEO, PGJO, PGUN, PIPA, PJAA, PJHB, PKPK, PLIN, PMJS, PMUI, PNBN, PNBS,
+PNGO, PNIN, PNLF, PNSE, POLA, POLI, POLU, PORT, POWR, PPGL, PPRE, PPRO,
+PRAY, PRDA, PRDL, PRIM, PSAB, PSAT, PSDN, PSGO, PSKT, PSSI, PTBA, PTMP,
+PTMR, PTPP, PTPS, PTPW, PTRO, PTSN, PTSP, PUDP, PURA, PWON, PYFA, PZZA,
+RAAM, RAJA, RALS, RANC, RANS, RATU, RBMS, RDTX, REAL, RELF, RELI, RGAS,
+RIGS, RISE, RLCO, RMKE, RMKO, ROCK, RODA, RONY, ROTI, RSCH, SAFE, SAGE,
+SAME, SAMF, SAPX, SATU, SCCO, SCMA, SCNP, SDMU, SDPC, SDRA, SFAN, SGER,
+SGRO, SHID, SHIP, SIDO, SILO, SIMP, SINI, SIPD, SKBM, SKLT, SKRN, SLIS,
+SMAR, SMBR, SMCB, SMDM, SMDR, SMGA, SMGR, SMIL, SMKL, SMLE, SMMA, SMMT,
+SMRA, SMSM, SOCI, SOFA, SOHO, SOLA, SONA, SOSS, SOTS, SPMA, SPTO, SQMI,
+SRAJ, SRSN, SRTG, SSIA, SSMS, SSTM, STAA, STAR, STRK, STTP, SULI, SUNI,
+SUPA, SUPR, SURE, SURI, SWID, TALF, TAMA, TAMU, TAPG, TARA, TBIG, TBLA,
+TCID, TCPI, TEBE, TFAS, TFCO, TGKA, TGUK, TIFA, TINS, TIRA, TIRT, TKIM,
+TLDN, TLKM, TMAS, TMPO, TOBA, TOSK, TOTL, TOTO, TOWR, TPIA, TPMA, TRGU,
+TRIM, TRIN, TRIS, TRJA, TRON, TRST, TRUE, TRUK, TRUS, TSPC, TUGU, TYRE,
+UANG, UCID, UDNG, UFOE, ULTJ, UNIC, UNIQ, UNSP, UNTD, UNTR, UNVR, URBN,
+UVCR, VAST, VERN, VICI, VICO, VINS, VISI, VIVA, VKTR, VOKS, VRNA, VTNY,
+WAPO, WBSA, WEGE, WEHA, WGSH, WICO, WIFI, WIIM, WIKA, WINE, WINS, WIRG,
+WMPP, WMUU, WOMF, WOOD, WSBP, WTON, XSPI, YELO, YOII, YPAS, YULE, YUPI,
+ZATA, ZINC, ZONE, ZYRX"""
+TICKERS = sorted(set(t.strip().upper() for t in IDX_TICKERS_ALL.replace("\n", ",").split(",") if t.strip()))
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def ambil_harga(tickers, periode="1y", batch=80):
-    """Unduh bar harian secara batch. Jauh lebih cepat daripada per emiten."""
-    keluar = {}
-    for i in range(0, len(tickers), batch):
-        chunk = [f"{t}.JK" for t in tickers[i:i+batch]]
-        try:
-            df = yf.download(chunk, period=periode, interval="1d", progress=False,
-                             auto_adjust=False, group_by="ticker", threads=True)
-        except Exception:
-            continue
-        for sym in chunk:
-            kode = sym[:-3]
-            try:
-                sub = df[sym] if isinstance(df.columns, pd.MultiIndex) else df
-                sub = sub[["Open","High","Low","Close","Volume"]].dropna()
-                if len(sub) >= 90:
-                    keluar[kode] = sub
-            except Exception:
-                continue
-    return keluar
+# ---------------------------------------------------------------- UTIL HARGA
+def tick(p):
+    return 1 if p < 200 else 2 if p < 500 else 5 if p < 2000 else 10 if p < 5000 else 25
 
 
-@st.cache_data(ttl=900, show_spinner=False)
-def ambil_makro():
+def floor_tick(p):
+    t = tick(p)
+    return np.floor(p / t + 1e-9) * t
+
+
+def ceil_tick(p):
+    """Harga valid terkecil (sesuai fraksi BEI) yang >= p."""
+    q = floor_tick(p)
+    if q < p - 1e-9:
+        q = q + tick(q)
+        q = floor_tick(q) if floor_tick(q) >= p - 1e-9 else q
+    return float(q)
+
+
+def trigger_price(sl):
+    """Harga close tertinggi (sesuai fraksi BEI) yang sudah memicu jual: close < SL."""
+    p = floor_tick(sl)
+    if p >= sl - 1e-9:
+        p = p - tick(p - 1e-9)
+    return float(p)
+
+
+def ara_lim(p):
+    return 0.35 if p < 200 else (0.25 if p <= 5000 else 0.20)
+
+
+def arb_price(close, tanggal):
+    """Harga terendah yang boleh dipasang untuk order jual besok (batas ARB, sesuai fraksi).
+    s.d. 31 Des 2026: ARB 7% (Rp11-14: Rp1). Mulai 1 Jan 2027: ARB simetris dengan ARA
+    (Rp<=200 35%, >200-5.000 25%, >5.000 20%). Harga <= Rp10: Rp1."""
+    c = float(close)
+    if c <= 10:
+        return max(1.0, c - 1)
+    if pd.Timestamp(tanggal) <= pd.Timestamp("2026-12-31"):
+        if c <= 14:
+            return c - 1
+        pct = 0.07
+    else:
+        pct = 0.35 if c <= 200 else (0.25 if c <= 5000 else 0.20)
+    return ceil_tick(c * (1 - pct))
+
+
+# ---------------------------------------------------------------- DATA
+def _download_batch(tickers, start, end, batch=100, pause=3):
+    import time
+    import yfinance as yf
     out = {}
-    peta = {"^JKSE":"IHSG","IDR=X":"USDIDR","CL=F":"OIL","GC=F":"GOLD","HG=F":"COPPER","^IXIC":"NASDAQ"}
-    try:
-        df = yf.download(list(peta), period="1mo", interval="1d", progress=False,
-                         auto_adjust=False, group_by="ticker", threads=True)
-        for sym, nama in peta.items():
+    for i in range(0, len(tickers), batch):
+        grp = [f"{t}.JK" for t in tickers[i:i + batch]]
+        d = None
+        for _ in range(4):
             try:
-                s = (df[sym]["Close"] if isinstance(df.columns, pd.MultiIndex) else df["Close"]).dropna()
-                if len(s) >= 2:
-                    out[nama] = {"val": float(s.iloc[-1]),
-                                 "chg": float(s.iloc[-1]/s.iloc[-2]-1)*100,
-                                 "chg1m": float(s.iloc[-1]/s.iloc[0]-1)*100,
-                                 "chg1w": float(s.iloc[-1]/s.iloc[-min(6,len(s))]-1)*100}
+                d = yf.download(grp, start=start, end=end, progress=False, auto_adjust=False, group_by="ticker", threads=True)
+                break
             except Exception:
-                continue
-    except Exception:
-        pass
+                time.sleep(10)
+        if d is None or d.empty:
+            continue
+        lvl0 = d.columns.get_level_values(0) if isinstance(d.columns, pd.MultiIndex) else []
+        for g in grp:
+            if g in lvl0:
+                x = d[g][["Open", "High", "Low", "Close", "Volume"]].dropna()
+                x = x[(x.Close > 0) & (x.High > 0)]
+                if len(x) > 250:
+                    out[g[:-3]] = x
+        time.sleep(pause)
     return out
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def ambil_berita():
-    peta_topik = {"AKUISISI":"AKUISISI","RIGHTS ISSUE":"RIGHTS ISSUE","DANANTARA":"DANANTARA",
-                  "MERGER":"MERGER","EKSPANSI":"EKSPANSI","INVESTASI":"INVESTASI","LABA":"EARNINGS",
-                  "RUGI":"EARNINGS","DIVIDEN":"DIVIDEN","KONTRAK":"KONTRAK"}
-    peta, daftar = {}, []
-    if not ADA_FEED:
-        return peta, daftar
-    for url in RSS_LINKS:
-        try:
-            feed = feedparser.parse(url)
-            for e in feed.entries:
-                judul = re.sub(r"</?b>", "", e.title).strip()
-                topik = "STRATEGIS"
-                for k, v in peta_topik.items():
-                    if k in judul.upper():
-                        topik = v; break
-                for t in set(re.findall(r"\b[A-Z]{4}\b", judul.upper())):
-                    if t not in {"IHSG","IDX","LQ45","BEII"}:
-                        peta[t] = {"judul": judul, "topik": topik}
-                daftar.append({"TOPIC": topik, "NEWS": judul})
-        except Exception:
-            continue
-    return peta, daftar
-
-# =====================================================================
-# MESIN METRIK
-# =====================================================================
-def hitung_stoch(df, n=10, sk=5, sd=5):
-    """Stochastic penuh 10,5,5 — %K periode 10 dihaluskan 5, %D = SMA(%K,5)."""
-    ll = df["Low"].rolling(n).min()
-    hh = df["High"].rolling(n).max()
-    raw = 100 * (df["Close"] - ll) / (hh - ll)
-    raw = raw.replace([np.inf, -np.inf], np.nan).fillna(50)
-    K = raw.rolling(sk).mean().fillna(50)
-    D = K.rolling(sd).mean().fillna(50)
-    return K, D
-
-
-def klasifikasi_stoch(k, d, kp, dp):
-    naik = k > kp
-    cross = (kp <= dp) and (k > d)
-    if k < 20 and cross:  return "GOLDEN CROSS DI JENUH JUAL"
-    if k < 20 and naik:   return "OVERSOLD & MULAI NAIK"
-    if k < 35 and cross:  return "CROSS UP DARI BAWAH"
-    if k < 20:            return "JENUH JUAL, BELUM BERBALIK"
-    if k < 45 and naik:   return "NAIK DARI ZONA BAWAH"
-    if k > 80 and k < kp: return "JENUH BELI, MULAI TURUN"
-    if k > 80:            return "JENUH BELI"
-    if naik:              return "NAIK DI ZONA TENGAH"
-    return "MELEMAH"
-
-
-def profil_volume(C, V, H, L):
-    """Verifikasi volume PER FASE. Rasio agregat 20 hari tidak bisa membedakan
-    apakah volume besar muncul saat naik atau saat turun — ini yang membedakan."""
-    n = len(C)
-    av20 = float(np.mean(V[-20:])) or 1.0
-
-    naik_i = [i for i in range(n-20, n) if C[i] > C[i-1]]
-    turun_i = [i for i in range(n-20, n) if C[i] < C[i-1]]
-    upVolQ = float(np.mean([V[i] for i in naik_i]))/av20 if naik_i else 0.0
-    dnVolQ = float(np.mean([V[i] for i in turun_i]))/av20 if turun_i else 0.0
-
-    # --- fase naik ---
-    ret5 = C[-1]/C[-6] - 1
-    push5 = float(np.mean(V[-5:]))/av20
-    if ret5 > 0.01:
-        if push5 >= 1.20:  naik_vonis, naik_skor = "NAIK DIDUKUNG VOLUME", 100
-        elif push5 >= 0.95: naik_vonis, naik_skor = "NAIK, VOLUME SECUKUPNYA", 62
-        else:               naik_vonis, naik_skor = "NAIK TANPA VOLUME", 0
-    elif ret5 < -0.01:      naik_vonis, naik_skor = "SEDANG TURUN", 45
-    else:                   naik_vonis, naik_skor = "MENDATAR", 50
-
-    # --- fase turun: cari puncak ayunan, jendela melebar sampai ketemu koreksi >=2% ---
-    dryUp, dryBasis, dec, adv, hari = None, None, 0.0, 0.0, 0
-    for win in (40, 60, 90, 130):
-        look = min(win, n-1)
-        seg = C[-look:]
-        p = n - look + int(np.argmax(seg))
-        if p >= n-2 or (C[-1]/C[p] - 1) > -0.02:
-            continue
-        lo = max(1, p-win)
-        pre = C[lo:p+1]
-        q = lo + int(np.argmin(pre)) if len(pre) else lo
-        va = float(np.mean(V[q+1:p+1])) if p > q else 0.0
-        vd = float(np.mean(V[p+1:n])) if n-1 > p else 0.0
-        if va > 0 and vd > 0:
-            dryUp, dryBasis = vd/va, "leg"
-            dec, adv, hari = C[-1]/C[p]-1, C[p]/C[q]-1, n-1-p
+def download_all(tickers=None, start=START_DATA, retries=2):
+    """Tarik OHLCV harian semua emiten (.JK). Saham aktif yang bar terakhirnya tertinggal
+    (biasanya karena Yahoo membatasi permintaan) diunduh ulang sampai `retries` kali."""
+    import time
+    tickers = tickers or TICKERS
+    end = (pd.Timestamp.now(tz="Asia/Jakarta").normalize() + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
+    data = _download_batch(tickers, start, end)
+    for _ in range(retries):
+        if not data:
             break
-    if dryUp is None and upVolQ > 0 and dnVolQ > 0:
-        dryUp, dryBasis = dnVolQ/upVolQ, "harian"
-
-    if dryUp is None:      turun_vonis, turun_skor = "TIDAK TERBACA", 50
-    elif dryUp <= 0.70:    turun_vonis, turun_skor = "VOLUME JUAL MENGERING", 100
-    elif dryUp <= 1.00:    turun_vonis, turun_skor = "VOLUME JUAL MENURUN", 75
-    elif dryUp <= 1.25:    turun_vonis, turun_skor = "VOLUME JUAL SETARA", 30
-    else:                  turun_vonis, turun_skor = "VOLUME JUAL LEBIH BESAR", 0
-
-    return dict(upVolQ=upVolQ, dnVolQ=dnVolQ, dryUp=dryUp, dryBasis=dryBasis,
-                declineRet=dec, advanceRet=adv, declineDays=hari, ret5=ret5, push5=push5,
-                naikVonis=naik_vonis, naikSkor=naik_skor,
-                turunVonis=turun_vonis, turunSkor=turun_skor,
-                gateNaik=0 if naik_skor == 0 else 1,
-                gateTurun=0 if turun_skor <= 30 else 1)
+        D = max(df.index[-1] for df in data.values())
+        lag = [k for k, df in data.items() if df.index[-1] < D and df.Volume.tail(5).sum() > 0]
+        lag += [t for t in tickers if t not in data]
+        if not lag:
+            break
+        time.sleep(20)
+        again = _download_batch(lag, start, end, batch=50, pause=5)
+        for k, df in again.items():
+            if k not in data or df.index[-1] > data[k].index[-1]:
+                data[k] = df
+    return data
 
 
-def profil_akumulasi(C, V, H, L):
-    n = len(C)
-    obv = np.zeros(n)
-    for i in range(1, n):
-        obv[i] = obv[i-1] + (V[i] if C[i] > C[i-1] else (-V[i] if C[i] < C[i-1] else 0))
-    obvSlope = (obv[-1]-obv[-21]) / (float(np.mean(V[-21:]))*20 or 1)
-    up = sum(V[i] for i in range(n-20, n) if C[i] > C[i-1])
-    dn = sum(V[i] for i in range(n-20, n) if C[i] < C[i-1])
-    ud = min(up/dn, 5.0) if dn > 0 else 3.0
-    rng = np.where(H[-10:] > L[-10:], (C[-10:]-L[-10:])/np.maximum(H[-10:]-L[-10:], 1e-9), 0.5)
-    closePos = float(np.mean(rng))
-    rng_now = float(np.mean((H[-10:]-L[-10:])/C[-10:]))
-    rng_ref = float(np.mean((H[-60:-10]-L[-60:-10])/C[-60:-10])) or rng_now
-    compress = rng_ref/rng_now if rng_now > 0 else 1.0
-    volRatio = float(np.mean(V[-10:]))/(float(np.mean(V[-60:])) or 1)
-    drift = C[-1]/C[-21]-1
-    stealth = max(0.0, volRatio-1) * max(0.0, compress-0.9) * (1 if -0.02 < drift < 0.14 else 0.3)
-    return dict(obvSlope=obvSlope, upDown=ud, closePos=closePos, compress=compress,
-                volRatio=volRatio, stealth=stealth, obvHist=(obv[-40:]/(float(np.mean(V[-21:]))*20 or 1)))
+def clean_stock(df):
+    """Bersihkan kesalahan Yahoo: bar rusak satu hari diganti bar sebelumnya,
+    split/reverse split yang tidak disesuaikan -> harga sebelum split disesuaikan.
+    Saham harga < Rp10 tidak disentuh (naik 1 tick bisa > 36%)."""
+    df = df.copy().astype(float)
+    log = []
+    for _ in range(5):
+        c = df.Close.values
+        changed = False
+        for t in range(1, len(c)):
+            if c[t - 1] < 10:
+                continue
+            r = c[t] / c[t - 1] - 1
+            if abs(r) <= 0.36:
+                continue
+            nxt = c[t + 1] / c[t] - 1 if t + 1 < len(c) else 0
+            if t + 1 < len(c) and abs(nxt) > 0.36 and np.sign(nxt) != np.sign(r):
+                for col in ["Open", "High", "Low", "Close"]:
+                    df.iloc[t, df.columns.get_loc(col)] = c[t - 1]
+                df.iloc[t, df.columns.get_loc("Volume")] = 0
+                log.append((df.index[t], "bar rusak diganti", r))
+            else:
+                ratio = c[t] / c[t - 1]
+                for col in ["Open", "High", "Low", "Close"]:
+                    df.iloc[:t, df.columns.get_loc(col)] *= ratio
+                df.iloc[:t, df.columns.get_loc("Volume")] /= ratio
+                log.append((df.index[t], f"split disesuaikan x{ratio:.4f}", r))
+            changed = True
+            break
+        if not changed:
+            break
+    return df, log
 
 
-def metrik(kode, df):
-    if len(df) < 90:
-        return None
-    C = df["Close"].values.astype(float); V = df["Volume"].values.astype(float)
-    H = df["High"].values.astype(float);  L = df["Low"].values.astype(float)
-    n = len(C)
-    back = lambda k: C[max(0, n-1-k)]
-
-    K, D = hitung_stoch(df)
-    k, d, kp, dp = float(K.iloc[-1]), float(D.iloc[-1]), float(K.iloc[-2]), float(D.iloc[-2])
-    sinyal = klasifikasi_stoch(k, d, kp, dp)
-
-    tv = C*V
-    tv20, tv60 = tv[-20:], tv[-60:]
-    ma20, ma50 = float(np.mean(C[-20:])), float(np.mean(C[-50:]))
-    ma20p = float(np.mean(C[-25:-5]))
-    rets = C[-60:]/C[-61:-1]-1
-
-    vol = profil_volume(C, V, H, L)
-    akm = profil_akumulasi(C, V, H, L)
-
-    return dict(
-        SYMBOL=kode, PRICE=float(C[-1]), TANGGAL=df.index[-1].strftime("%Y-%m-%d"),
-        CHG=float(C[-1]/C[-2]-1), RET1W=float(C[-1]/back(5)-1),
-        RET1M=float(C[-1]/back(21)-1), RET3M=float(C[-1]/back(63)-1),
-        MA20=ma20, MA50=ma50, VS_MA20=float(C[-1]/ma20-1), VS_MA50=float(C[-1]/ma50-1),
-        MA_RISING=int(ma20 > ma20p), MA_CROSS=int(ma20 >= ma50),
-        VOLATILITY=float(np.std(rets, ddof=1)*np.sqrt(252)),
-        TURN_AVG=float(np.mean(tv20)), TURN_MED=float(np.median(tv20)),
-        TURN_MIN20=float(np.min(tv20)), TURN_MIN60=float(np.min(tv60)),
-        HARI_5M=int(np.sum(tv20 >= 5e9)),
-        VOL_POWER=float(V[-1]/(np.mean(V[-20:]) or 1)),
-        FLOW_VELOCITY=float(np.mean(V[-5:])/(np.mean(V[-50:]) or 1)),
-        STOCH_K=k, STOCH_D=d, STOCH_SIGNAL=sinyal, STOCH_SCORE=STOCH_SCORE.get(sinyal, 30),
-        SECTOR=SECTOR_MAP.get(kode, "OTHERS"), GROUP=MASTER_AFILIASI.get(kode, "EXTERNAL"),
-        THEMES=[t for t, m in THEMES.items() if kode in m],
-        **{f"V_{a}": b for a, b in vol.items()},
-        **{f"A_{a}": b for a, b in akm.items() if a != "obvHist"},
-        A_obvHist=akm["obvHist"], RAW=df,
-    )
-
-# =====================================================================
-# KETINGGALAN SEKELOMPOK: GRUP -> TEMA -> SEKTOR
-# =====================================================================
-def hitung_peer_gap(rows):
-    r1w = {r["SYMBOL"]: r["RET1W"] for r in rows}
-    likuid = {r["SYMBOL"] for r in rows if r["TURN_MIN20"] >= 1e9}
-
-    def pemimpin(anggota):
-        ada = [t for t in anggota if t in r1w and t in likuid]
-        return (max(ada, key=lambda t: r1w[t]), len(ada)) if len(ada) >= 2 else (None, 0)
-
-    grup_lead, tema_lead, sekt_lead = {}, {}, {}
-    for g in set(MASTER_AFILIASI.values()):
-        L, n = pemimpin([t for t, v in MASTER_AFILIASI.items() if v == g])
-        if L: grup_lead[g] = (L, r1w[L], n)
-    for th, mem in THEMES.items():
-        L, n = pemimpin(mem)
-        if L: tema_lead[th] = (L, r1w[L], n)
-    per_sekt = defaultdict(list)
-    for r in rows:
-        if r["SYMBOL"] in likuid:
-            per_sekt[r["SECTOR"]].append(r["SYMBOL"])
-    for s, mem in per_sekt.items():
-        if len(mem) >= 4:
-            L = max(mem, key=lambda t: r1w[t])
-            sekt_lead[s] = (L, r1w[L], len(mem))
-
-    for r in rows:
-        t = r["SYMBOL"]; gap, basis, label, lead = 0.0, None, None, None
-        g = r["GROUP"]
-        if g in grup_lead and grup_lead[g][1] > 0.03:
-            gap, basis, label, lead = grup_lead[g][1]-r1w[t], "GRUP", g, grup_lead[g][0]
-        if gap <= 0.005:
-            for th in r["THEMES"]:
-                if th in tema_lead and tema_lead[th][1] > 0.03:
-                    v = tema_lead[th][1]-r1w[t]
-                    if v > gap: gap, basis, label, lead = v, "KOMODITAS", th, tema_lead[th][0]
-        if gap <= 0.005:
-            s = r["SECTOR"]
-            if s in sekt_lead and sekt_lead[s][1] > 0.03:
-                gap, basis, label, lead = sekt_lead[s][1]-r1w[t], "SEKTOR", s, sekt_lead[s][0]
-        r["PEER_GAP"] = max(0.0, gap); r["PEER_BASIS"] = basis or "-"
-        r["PEER_LABEL"] = label or "-"; r["PEER_LEADER"] = lead or "-"
-    return rows, grup_lead, sekt_lead
-
-# =====================================================================
-# SKOR
-# =====================================================================
-def komponen_mentah(r, makro):
-    vol = r["V_naikSkor"]*0.45 + r["V_turunSkor"]*0.45 + \
-          float(np.clip((r["V_upVolQ"]-r["V_dnVolQ"])*20, -20, 20))
-    akum = r["A_obvSlope"]*30 + (r["A_upDown"]-1)*18 + (r["A_closePos"]-0.5)*55 + r["A_stealth"]*35
-    struk = (22 if r["MA_RISING"] else 0) + (22 if r["MA_CROSS"] else 0) + \
-            float(np.clip(r["VS_MA50"]*100, -30, 30)) + float(np.clip(r["VS_MA20"]*100, -18, 18))
-    tema = 0.0
-    for th in r["THEMES"]:
-        sym = COMMODITY_PROXY.get(th)
-        if sym:
-            nm = {"GC=F":"GOLD","HG=F":"COPPER","CL=F":"OIL"}[sym]
-            m = makro.get(nm)
-            if m: tema = max(tema, m["chg1m"]*1.6 + m["chg1w"])
-    return {"stoch": r["STOCH_SCORE"], "vol": vol, "akum": akum,
-            "peer": r["PEER_GAP"]*100, "struktur": struk, "tema": tema}
+def clean_all(data):
+    out, logs = {}, {}
+    for k, df in data.items():
+        out[k], lg = clean_stock(df)
+        if lg:
+            logs[k] = lg
+    return out, logs
 
 
-def beri_skor(rows, bobot, makro):
-    """Z-score lintas-saham, lalu dijumlahkan menurut bobot.
-
-    Skor bersifat RELATIF terhadap kandidat yang lolos saringan hari itu —
-    bukan nilai mutlak. Skor 70 saat 15 kandidat berbeda arti dengan skor 70
-    saat 150 kandidat.
-    """
-    if not rows:
-        return rows
-    total = sum(bobot.values()) or 1
-    if len(rows) < 5:
-        # sampel terlalu kecil untuk z-score yang berarti; pakai skala mentah
-        for r in rows:
-            m = komponen_mentah(r, makro)
-            r["KONTRIB"] = {k: 0.0 for k in bobot}
-            r["CONF"] = float(np.clip(m["stoch"]*0.5 + m["vol"]*0.5, 0, 100))
-    else:
-        mentah = [komponen_mentah(r, makro) for r in rows]
-        Z = {}
-        for k in bobot:
-            v = np.array([m[k] for m in mentah], dtype=float)
-            s = v.std(ddof=1) or 1.0
-            Z[k] = np.clip((v - v.mean())/s, -3, 3)
-        for i, r in enumerate(rows):
-            kontrib = {k: float(Z[k][i]*bobot[k]/total) for k in bobot}
-            r["KONTRIB"] = kontrib
-            r["CONF"] = float(np.clip(50 + sum(kontrib.values())*16.7, 0, 100))
-    rows.sort(key=lambda r: -r["CONF"])
-    for i, r in enumerate(rows):
-        r["RANK"] = i+1
-        r["PORTO"] = "15-20% (Aggressive)" if r["CONF"] >= 70 else \
-                     ("10% (Medium)" if r["CONF"] >= 58 else "2-5% (Speculative)")
-    return rows
-
-def peringkat_semua_preset(rows, makro):
-    """Urutan LENGKAP tiap preset pada kumpulan kandidat yang sama.
-
-    Tidak mengubah CONF/RANK milik preset aktif — skor tiap preset dihitung
-    terpisah lalu hanya diambil urutannya.
-    """
-    if len(rows) < 5:
-        return {p: [r["SYMBOL"] for r in rows] for p in PRESETS}
-    mentah = [komponen_mentah(r, makro) for r in rows]
-    kunci = list(PRESETS["SEIMBANG"].keys())
-    Z = {}
-    for k in kunci:
-        v = np.array([m[k] for m in mentah], dtype=float)
-        s = v.std(ddof=1) or 1.0
-        Z[k] = np.clip((v - v.mean())/s, -3, 3)
-    hasil = {}
-    for nama, bbt in PRESETS.items():
-        tot = sum(bbt.values()) or 1
-        skor = [sum(Z[k][i]*bbt.get(k, 0)/tot for k in kunci) for i in range(len(rows))]
-        urut = sorted(range(len(rows)), key=lambda i: -skor[i])
-        hasil[nama] = [rows[i]["SYMBOL"] for i in urut]
-    return hasil
+# ---------------------------------------------------------------- INDIKATOR
+def atr_wilder(h, l, c, n=14):
+    tr = np.maximum(h - l, np.maximum(abs(h - np.r_[np.nan, c[:-1]]), abs(l - np.r_[np.nan, c[:-1]])))
+    tr[0] = h[0] - l[0]
+    out = np.full(len(h), np.nan)
+    if len(h) < n:
+        return out
+    out[n - 1] = tr[:n].mean()
+    for i in range(n, len(h)):
+        out[i] = (out[i - 1] * (n - 1) + tr[i]) / n
+    return out
 
 
-def alokasi_papan(peringkat, mode, top_n=3):
-    """Susun papan dari urutan tiap preset.
-
-    KONSENSUS — tiap preset ambil top_n miliknya apa adanya. Saham yang sama
-    boleh muncul di beberapa preset; itu hasil apa adanya dari parameter.
-
-    EKSKLUSIF — draft bergiliran: tiap preset bergantian mengambil saham
-    peringkat tertinggi yang belum diambil preset lain. Hasilnya nama-nama
-    berbeda yang mewakili selera KHAS tiap preset. Konsekuensinya sebagian
-    pick jadi lebih lemah secara absolut — potensi untung ditukar dengan
-    kemampuan membuktikan preset mana yang benar.
-    """
-    nama_preset = list(peringkat.keys())
-    if mode == "KONSENSUS":
-        return {p: peringkat[p][:top_n] for p in nama_preset}
-    papan = {p: [] for p in nama_preset}
-    terpakai = set()
-    for putaran in range(top_n):
-        for p in nama_preset:
-            pilih = next((t for t in peringkat[p] if t not in terpakai), None)
-            if pilih:
-                papan[p].append(pilih); terpakai.add(pilih)
-    return papan
-
-
-# =====================================================================
-# NARASI
-# =====================================================================
-def bangun_tesis(r, makro, berita, tp_pct, sl_pct):
-    p = []
-    warna = "#00ffcc" if r["STOCH_SCORE"] >= 70 else ("#ffd166" if r["STOCH_SCORE"] >= 36 else "#ff0055")
-    p.append(f"🔵 <b>STOCHASTIC (10,5,5):</b> %K={r['STOCH_K']:.1f} | %D={r['STOCH_D']:.1f} → "
-             f"<span style='color:{warna}'><b>{r['STOCH_SIGNAL']}</b></span>")
-
-    v = r
-    dry = "–" if v["V_dryUp"] is None else f"{v['V_dryUp']:.2f}x"
-    warna_v = "#00ffcc" if v["V_turunSkor"] >= 75 else ("#ffd166" if v["V_turunSkor"] >= 50 else "#ff0055")
-    p.append(f"🌊 <b>VOLUME:</b> fase naik <b>{v['V_naikVonis']}</b> (volume 5h {v['V_push5']:.2f}x) · "
-             f"fase turun <span style='color:{warna_v}'><b>{v['V_turunVonis']}</b></span> (turun/naik {dry})")
-
-    if v["V_dryUp"] is not None and v["V_declineDays"]:
-        p.append(f"📐 <b>LEG:</b> naik {v['V_advanceRet']*100:+.1f}% lalu koreksi {v['V_declineRet']*100:+.1f}% "
-                 f"selama {v['V_declineDays']} hari.")
-
-    p.append(f"🏗️ <b>STRUKTUR:</b> {'MA20 di atas MA50' if r['MA_CROSS'] else 'MA20 di bawah MA50'}, "
-             f"{'MA20 menanjak' if r['MA_RISING'] else 'MA20 melandai'} · "
-             f"vs MA20 {r['VS_MA20']*100:+.1f}% · vs MA50 {r['VS_MA50']*100:+.1f}%")
-
-    p.append(f"💧 <b>LIKUIDITAS:</b> minimum harian Rp {r['TURN_MIN20']/1e9:.2f} M · "
-             f"{r['HARI_5M']}/20 hari tembus Rp 5 M · median Rp {r['TURN_MED']/1e9:.1f} M")
-
-    if r["PEER_GAP"] > 0.005:
-        p.append(f"🔗 <b>KETINGGALAN {r['PEER_BASIS']}:</b> tertinggal {r['PEER_GAP']*100:.1f}pp dari "
-                 f"<b>{r['PEER_LEADER']}</b> di {r['PEER_LABEL']}.")
-
-    for th in r["THEMES"]:
-        nm = {"emas":"GOLD","tembaga":"COPPER","minyak":"OIL"}.get(th)
-        if nm and nm in makro:
-            p.append(f"⛏️ <b>KOMODITAS:</b> tema {th} — acuan {nm} {makro[nm]['chg1m']:+.1f}% sebulan.")
-        elif not nm:
-            p.append(f"⛏️ <b>KOMODITAS:</b> tema {th} — tidak ada acuan harga gratis, komponen dinetralkan.")
-
-    n = berita.get(r["SYMBOL"])
-    if n:
-        p.append(f"📰 <b>{n['topik']}:</b> {n['judul'][:90]}…")
-
-    entry = int(r["PRICE"])
-    tp = int(round(entry*(1+tp_pct/100)))
-    sl = int(round(entry*(1-sl_pct/100)))
-    p.append(f"<div style='margin-top:8px;padding-top:6px;border-top:1px dashed #333;"
-             f"font-family:JetBrains Mono;font-size:11px'>🛡️ <b>EKSEKUSI:</b> BUY {entry:,} | "
-             f"<span style='color:#ff4d4d'>STOP {sl:,} (-{sl_pct}%)</span> | "
-             f"<span style='color:#00ffcc'>TARGET {tp:,} (+{tp_pct}%)</span></div>".replace(",", "."))
-    return "<br>".join(p)
-
-# =====================================================================
-# GRAFIK
-# =====================================================================
-def grafik(r):
-    df = r["RAW"].tail(60).copy()
-    K, D = hitung_stoch(r["RAW"])
-    K, D = K.tail(60), D.tail(60)
-    av20 = r["RAW"]["Volume"].rolling(20).mean().tail(60)
-
-    fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.03,
-                        row_heights=[0.52, 0.20, 0.28])
-
-    fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"],
-                  close=df["Close"], increasing_line_color="#00ffcc", decreasing_line_color="#ff0055",
-                  name=r["SYMBOL"]), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df["Close"].rolling(20).mean(),
-                  line=dict(color="#ffd166", width=1), name="MA20"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=r["RAW"]["Close"].rolling(50).mean().tail(60),
-                  line=dict(color="#7c8a94", width=1, dash="dot"), name="MA50"), row=1, col=1)
-
-    warna_vol = ["#00ffcc" if c >= o else "#ff0055" for c, o in zip(df["Close"], df["Open"])]
-    fig.add_trace(go.Bar(x=df.index, y=df["Volume"], marker_color=warna_vol, name="Volume"), row=2, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=av20, line=dict(color="#fff", width=1, dash="dot"),
-                  name="VMA20"), row=2, col=1)
-
-    fig.add_hrect(y0=80, y1=100, fillcolor="rgba(255,0,85,.10)", line_width=0, row=3, col=1)
-    fig.add_hrect(y0=0, y1=20, fillcolor="rgba(0,255,204,.10)", line_width=0, row=3, col=1)
-    for y in (20, 50, 80):
-        fig.add_hline(y=y, line_dash="dot", line_color="#555", line_width=1, row=3, col=1)
-    fig.add_trace(go.Scatter(x=K.index, y=K, line=dict(color="#0088ff", width=2), name="%K"), row=3, col=1)
-    fig.add_trace(go.Scatter(x=D.index, y=D, line=dict(color="#ff9900", width=2), name="%D"), row=3, col=1)
-
-    cu = (K > D) & (K.shift(1) <= D.shift(1))
-    if cu.any():
-        fig.add_trace(go.Scatter(x=K.index[cu], y=K[cu], mode="markers",
-                      marker=dict(symbol="star", size=10, color="#ffff00"), name="Cross"), row=3, col=1)
-
-    judul = (f"<b style='color:#fff;font-size:17px'>{r['SYMBOL']}</b>"
-             f"<span style='color:#888;font-size:11px'> | {r['GROUP']} · {r['SECTOR']} · "
-             f"skor {r['CONF']:.1f}</span>")
-    fig.update_layout(template="plotly_dark", height=420, paper_bgcolor="rgba(0,0,0,0)",
-                      plot_bgcolor="rgba(0,0,0,0)", showlegend=False, xaxis_rangeslider_visible=False,
-                      margin=dict(l=8, r=8, t=46, b=8), title=dict(text=judul, x=0.02, y=0.96))
-    fig.update_xaxes(showticklabels=False, row=1, col=1)
-    fig.update_xaxes(showticklabels=False, row=2, col=1)
-    fig.update_yaxes(showticklabels=False, row=2, col=1)
-    fig.update_yaxes(range=[-5, 105], row=3, col=1)
-    return fig
-
-# =====================================================================
-# JURNAL
-# =====================================================================
-KOLOM_JURNAL = ["id","tanggal_beli","kode","preset","harga_beli","lot","modal","tp_persen","sl_persen",
-                "jatuh_tempo","status","tanggal_jual","harga_jual","sebab","skor","stoch_k","stoch_d",
-                "rasio_turun_naik","fase_naik","fase_turun","peer_gap","sektor","grup"]
-
-def muat_jurnal():
-    if "jurnal" not in st.session_state:
-        if os.path.exists(JURNAL_FILE):
-            try:
-                st.session_state.jurnal = pd.read_csv(JURNAL_FILE).to_dict("records")
-            except Exception:
-                st.session_state.jurnal = []
+def zigzag_locks(h, l, atr, mult):
+    """Pivot ZigZag ATR + hari pivot itu terkunci (kausal)."""
+    n = len(h)
+    valid = np.where(~np.isnan(atr))[0]
+    if len(valid) == 0:
+        return [], []
+    s = valid[0]
+    piv, lk = [], []
+    trend = 0
+    hi, hi_i, lo, lo_i = h[s], s, l[s], s
+    ext = ext_i = None
+    for i in range(s + 1, n):
+        th = mult * atr[i]
+        if trend == 0:
+            if h[i] > hi: hi, hi_i = h[i], i
+            if l[i] < lo: lo, lo_i = l[i], i
+            if lo_i < i and h[i] - lo >= th:
+                piv.append((lo_i, lo, "L")); lk.append(i)
+                seg = h[lo_i + 1:i + 1]; k = int(np.argmax(seg)); ext, ext_i, trend = seg[k], lo_i + 1 + k, 1
+            elif hi_i < i and hi - l[i] >= th:
+                piv.append((hi_i, hi, "H")); lk.append(i)
+                seg = l[hi_i + 1:i + 1]; k = int(np.argmin(seg)); ext, ext_i, trend = seg[k], hi_i + 1 + k, -1
+        elif trend == 1:
+            if h[i] > ext: ext, ext_i = h[i], i
+            elif ext - l[i] >= th:
+                piv.append((ext_i, ext, "H")); lk.append(i)
+                seg = l[ext_i + 1:i + 1]; k = int(np.argmin(seg)); ext, ext_i, trend = seg[k], ext_i + 1 + k, -1
         else:
-            st.session_state.jurnal = []
-    return st.session_state.jurnal
+            if l[i] < ext: ext, ext_i = l[i], i
+            elif h[i] - ext >= th:
+                piv.append((ext_i, ext, "L")); lk.append(i)
+                seg = h[ext_i + 1:i + 1]; k = int(np.argmax(seg)); ext, ext_i, trend = seg[k], ext_i + 1 + k, 1
+    return piv, lk
 
-def simpan_jurnal():
-    try:
-        pd.DataFrame(st.session_state.jurnal, columns=KOLOM_JURNAL).to_csv(JURNAL_FILE, index=False)
-    except Exception as e:
-        st.warning(f"Gagal menulis {JURNAL_FILE}: {e}")
 
-def bursa_plus(n):
-    d = datetime.now(WIB)
-    c = 0
-    while c < n:
-        d += timedelta(days=1)
-        if d.weekday() < 5: c += 1
-    return d.strftime("%Y-%m-%d")
+# ---------------------------------------------------------------- GARIS SINYAL
+def build_line(highs, b_idx, c, atr, d):
+    ib, pb = highs[b_idx]
+    best = None
+    for j in range(max(0, b_idx - MAX_ANCHOR), b_idx):
+        ia, pa = highs[j]
+        if pa <= pb or ib - ia < 10:
+            continue
+        slope = (pb - pa) / (ib - ia)
+        touches, ok = 2, True
+        for k in range(j + 1, b_idx):
+            ik, pk = highs[k]
+            Lk = pa + slope * (ik - ia)
+            tol = TOL_PIVOT * atr[ik]
+            if pk > Lk + tol:
+                ok = False; break
+            if abs(pk - Lk) <= tol:
+                touches += 1
+        if not ok or touches < MIN_TOUCH:
+            continue
+        t = np.arange(ia, d + 1)
+        if np.any(c[ia:d + 1] > pa + slope * (t - ia) + 1e-9):
+            continue
+        if best is None or ia < best[0]:
+            best = (ia, pa, slope, touches, ib)
+    return best
 
-def tambah_jurnal(r, preset, modal, tp, sl, hold):
-    J = muat_jurnal()
-    ada = next((x for x in J if x["kode"] == r["SYMBOL"] and x["status"] == "open"), None)
-    if ada:                                    # satu saham = satu posisi
-        pres = str(ada["preset"]).split("|")
-        if preset not in pres:
-            ada["preset"] = "|".join(pres + [preset])
-            simpan_jurnal()
-            return "gabung"
-        return "duplikat"
-    lot = max(1, int(modal // (r["PRICE"]*100)))
-    J.append({
-        "id": f"{int(time.time()*1000)}-{r['SYMBOL']}", "tanggal_beli": datetime.now(WIB).strftime("%Y-%m-%d"),
-        "kode": r["SYMBOL"], "preset": preset, "harga_beli": round(r["PRICE"], 2), "lot": lot,
-        "modal": round(r["PRICE"]*lot*100), "tp_persen": tp, "sl_persen": sl,
-        "jatuh_tempo": bursa_plus(hold), "status": "open", "tanggal_jual": "", "harga_jual": "",
-        "sebab": "", "skor": round(r["CONF"], 1), "stoch_k": round(r["STOCH_K"], 1),
-        "stoch_d": round(r["STOCH_D"], 1),
-        "rasio_turun_naik": "" if r["V_dryUp"] is None else round(r["V_dryUp"], 3),
-        "fase_naik": r["V_naikVonis"], "fase_turun": r["V_turunVonis"],
-        "peer_gap": round(r["PEER_GAP"], 4), "sektor": r["SECTOR"], "grup": r["GROUP"],
-    })
-    simpan_jurnal()
-    return "baru"
 
-def hitung_pnl(t, harga, fee_b, fee_s):
-    lembar = int(t["lot"])*100
-    modal = float(t["harga_beli"])*lembar*(1+fee_b)
-    hasil = float(harga)*lembar*(1-fee_s)
-    return hasil-modal, (hasil-modal)/modal
+def signals_for_stock(kode, df, sig_start=None):
+    """Semua sinyal break garis turun untuk satu saham (kausal).
+    Juga mengembalikan garis yang sedang aktif di bar terakhir (untuk chart)."""
+    o, h, l, c, v = [df[x].values.astype(float) for x in ["Open", "High", "Low", "Close", "Volume"]]
+    n = len(c)
+    atr = atr_wilder(h, l, c)
+    val20 = pd.Series(c * v).rolling(20).mean().values
+    piv, lk = zigzag_locks(h, l, atr, MULT)
+    lock_at = {}
+    for (i, p, t), q in zip(piv, lk):
+        if t == "H":
+            lock_at.setdefault(q, []).append((i, p))
+    highs, line, out = [], None, []
+    i0 = 0 if sig_start is None else int(np.searchsorted(df.index.values, pd.Timestamp(sig_start).to_datetime64()))
+    for d in range(n):
+        if d in lock_at:
+            for hp in lock_at[d]:
+                highs.append(hp)
+                nl = build_line(highs, len(highs) - 1, c, atr, d)
+                if nl is not None:
+                    line = nl
+        if line is None:
+            continue
+        ia, pa, slope, touches, ib = line
+        if d - ib > MAX_AGE_LINE:
+            line = None; continue
+        Ld = pa + slope * (d - ia)
+        if c[d] >= Ld + BUF_BREAK * atr[d]:
+            if d >= i0 and val20[d] >= VAL_MIN:
+                out.append(dict(kode=kode, d=df.index[d], close=c[d], sl0=Ld - SL_ATR0 * atr[d], val=val20[d],
+                                line=Ld, atr=atr[d], ia=ia, pa=pa, slope=slope, touches=touches))
+            line = None
+    active = None
+    if line is not None:
+        ia, pa, slope, touches, ib = line
+        active = dict(ia=ia, pa=pa, slope=slope, touches=touches, ib=ib, now=pa + slope * (n - 1 - ia), atr=atr[-1])
+    return out, active
 
-# =====================================================================
-# SIDEBAR
-# =====================================================================
-st.sidebar.markdown("### ⚙️ PARAMETER")
 
-mode_universe = st.sidebar.radio("Universe", ["Semua IDX", "Grup terpantau saja"], index=1,
-    help="Semua IDX menarik 800+ emiten — putaran pertama 2-4 menit, lalu di-cache 15 menit.")
+# ---------------------------------------------------------------- TANGGA MERAH
+class _Line:
+    __slots__ = ("ia", "pa", "slope", "ib", "scale")
 
-preset_nama = st.sidebar.selectbox("Preset", list(PRESETS), index=0)
-bobot = dict(PRESETS[preset_nama])
-with st.sidebar.expander("Setel bobot manual"):
-    for k in bobot:
-        bobot[k] = st.slider(k, 0, 50, bobot[k], 1, key=f"b_{k}")
+    def __init__(s, ia, pa, ib, pb, scale):
+        s.ia, s.pa, s.ib, s.scale = ia, pa, ib, scale
+        s.slope = (pb - pa) / (ib - ia)
 
-st.sidebar.markdown("---")
-amb_likuid = st.sidebar.selectbox("Transaksi harian minimal", [0, 1e9, 2e9, 5e9, 1e10, 2e10],
-    index=3, format_func=lambda v: "Tanpa batas" if v == 0 else f"Rp {v/1e9:.0f} miliar")
-dasar_likuid = st.sidebar.selectbox("Dasar hitung", ["TURN_MIN20","TURN_MIN60","TURN_MED","TURN_AVG"],
-    index=0, format_func=lambda k: {"TURN_MIN20":"Minimum 20 hari","TURN_MIN60":"Minimum 60 hari",
-    "TURN_MED":"Median 20 hari","TURN_AVG":"Rata-rata 20 hari (longgar)"}[k])
-harga_min = st.sidebar.number_input("Harga minimal", 0, 100000, 50, 50)
-k_maks = st.sidebar.slider("Stochastic %K maksimal", 0, 100, 100, 5)
+    def at(s, t):
+        return s.pa + s.slope * (t - s.ia)
 
-st.sidebar.markdown("**Gerbang keras**")
-buang_stoch = st.sidebar.checkbox("Buang JENUH BELI & MELEMAH", True)
-gate_naik = st.sidebar.checkbox("Buang NAIK TANPA VOLUME", True)
-gate_turun = st.sidebar.checkbox("Buang volume jual besar", True)
-wajib_ma = st.sidebar.checkbox("Wajib MA20 > MA50", False)
-wajib_obv = st.sidebar.checkbox("Wajib OBV 20 hari naik", False)
-dry_maks = st.sidebar.number_input("Rasio turun/naik maksimal", 0.1, 5.0, 2.0, 0.05)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Jurnal**")
-modal_total = st.sidebar.number_input("Modal total", 0, 10_000_000_000, 30_000_000, 1_000_000)
-jml_posisi = st.sidebar.number_input("Jumlah posisi", 1, 50, 15, 1)
-tp_pct = st.sidebar.number_input("Take profit %", 0.5, 50.0, 8.0, 0.5)
-sl_pct = st.sidebar.number_input("Stop loss %", 0.5, 50.0, 5.0, 0.5)
-hold_hari = st.sidebar.number_input("Tahan (hari bursa)", 1, 30, 5, 1)
-fee_beli = st.sidebar.number_input("Fee beli %", 0.0, 2.0, 0.15, 0.01)/100
-fee_jual = st.sidebar.number_input("Fee jual %", 0.0, 2.0, 0.25, 0.01)/100
+def _make_red(ph, k, C, ATR, d, scale):
+    ib, pb = ph[k]
+    best = None
+    for j in range(max(0, k - 10), k):
+        ia, pa = ph[j]
+        if pa <= pb or ib - ia < 5:
+            continue
+        ln = _Line(ia, pa, ib, pb, scale)
+        if not all(ph[m][1] <= ln.at(ph[m][0]) + 0.25 * ATR[ph[m][0]] for m in range(j + 1, k)):
+            continue
+        t = np.arange(ia, d + 1)
+        if np.any(C[ia:d + 1] > ln.at(t) + 1e-12):
+            continue
+        if best is None or ln.at(d) < best.at(d):
+            best = ln
+    return best
 
-if ADA_AUTOREFRESH and st.sidebar.checkbox("Auto refresh 5 menit", False):
-    st_autorefresh(interval=300000, key="quantum_sync")
 
-# =====================================================================
-# HALAMAN
-# =====================================================================
-st.markdown('<div class="header-container"><div class="header-title">PREDATOR QUANTUM PRO</div>'
-            '<div class="header-sub">SETUP BOARD ENGINE · STOCHASTIC 10,5,5 · VERIFIKASI VOLUME PER FASE</div></div>',
-            unsafe_allow_html=True)
+def red_ladder(df):
+    """Garis merah (lower high) di 4 ukuran swing, skala log.
+    Kembalikan: daftar tembus [(tanggal, level_harga)] dan garis aktif di bar terakhir."""
+    h, l, c = [df[x].values.astype(float) for x in ["High", "Low", "Close"]]
+    H, L, C = np.log(h), np.log(l), np.log(c)
+    n = len(C)
+    ATR = atr_wilder(H, L, C)
+    ev = {s: {} for s in RED_SCALES}
+    for s in RED_SCALES:
+        piv, lk = zigzag_locks(H, L, ATR, s)
+        for (i, p, t), q in zip(piv, lk):
+            if t == "H":
+                ev[s].setdefault(q, []).append((i, p))
+    ph = {s: [] for s in RED_SCALES}
+    reds, breaks = [], []
+    for d in range(n):
+        if np.isnan(ATR[d]):
+            continue
+        for s in RED_SCALES:
+            for hp in ev[s].get(d, []):
+                ph[s].append(hp)
+                ln = _make_red(ph[s], len(ph[s]) - 1, C, ATR, d, s)
+                if ln is not None and not any(abs(r.at(d) - ln.at(d)) < 0.5 * ATR[d] for r in reds):
+                    reds.append(ln)
+        alive = []
+        for r in reds:
+            if d - r.ib > RED_AGE[r.scale]:
+                continue
+            lv = r.at(d)
+            if C[d] >= lv + RED_BUF * ATR[d]:
+                breaks.append((df.index[d], float(np.exp(lv))))
+                continue
+            alive.append(r)
+        reds = alive
+    active = sorted([dict(scale=r.scale, now=float(np.exp(r.at(n - 1))), ia=r.ia, pa=float(np.exp(r.pa)), slope=r.slope,
+                          naik_jika_close=ceil_tick(float(np.exp(r.at(n - 1) + RED_BUF * ATR[n - 1]))))
+                     for r in reds], key=lambda z: z["now"])
+    return breaks, active
 
-brk = (fee_beli+fee_jual)*100
-impas = 100*(sl_pct+brk)/((tp_pct-brk)+(sl_pct+brk)) if (tp_pct-brk) > 0 else 100
-st.markdown(f"""<div class="warnbox">
-<b>Bid/offer, broker summary, dan net foreign tidak ada di sini</b> — ketiganya berlisensi bursa.
-Papan ini menyempitkan daftar; konfirmasi akhir di layar sekuritas.<br>
-Fee pulang-pergi <b>{brk:.2f}%</b> · TP bersih <b>+{tp_pct-brk:.2f}%</b> ·
-SL bersih <b>−{sl_pct+brk:.2f}%</b> · titik impas <b>{impas:.0f}%</b> kemenangan.
-</div>""", unsafe_allow_html=True)
 
-makro = ambil_makro()
-if makro:
-    html = "<div class='macro-strip'>"
-    for k, v in makro.items():
-        cls = "macro-val-up" if v["chg"] >= 0 else "macro-val-down"
-        panah = "▲" if v["chg"] >= 0 else "▼"
-        html += (f"<div class='macro-item'><span class='macro-label'>{k}</span>"
-                 f"<span class='{cls}'>{v['val']:,.2f} ({panah} {v['chg']:.2f}%)</span></div>")
-    st.markdown(html + "</div>", unsafe_allow_html=True)
+# ---------------------------------------------------------------- PERSIAPAN
+def prepare(data, sig_start=None):
+    """Hitung semua bahan: sinyal, tembus merah, ATR harian, garis aktif."""
+    SIG, RB, ATRS, ACTIVE, REDS = {}, {}, {}, {}, {}
+    for k, df in data.items():
+        s, act = signals_for_stock(k, df, sig_start)
+        SIG[k] = s; ACTIVE[k] = act
+        RB[k], REDS[k] = red_ladder(df)
+        ATRS[k] = pd.Series(atr_wilder(df.High.values.astype(float), df.Low.values.astype(float), df.Close.values.astype(float)), index=df.index)
+    return dict(SIG=SIG, RB=RB, ATRS=ATRS, ACTIVE=ACTIVE, REDS=REDS)
 
-ph = st.empty()
-ph.markdown('<div class="blink">MENARIK DATA & MENGHITUNG METRIK…</div>', unsafe_allow_html=True)
 
-universe, sumber_universe = ambil_universe()
-if mode_universe == "Grup terpantau saja":
-    universe = sorted(set(FALLBACK_UNIVERSE) & set(universe)) or FALLBACK_UNIVERSE
+def new_state(modal=MODAL_AWAL, mulai=None):
+    return dict(versi=VERSION, modal_awal=modal, modal_masuk=float(modal), deposits=[], pending_dep=0.0,
+                cash=float(modal), reserved=0.0, pos={}, pend_buy={}, log=[], skipped=[], events=[],
+                materai_total=0.0, last_date=None if mulai is None else str(pd.Timestamp(mulai).date()),
+                equity=[], ihsg_start=None, start_date=None, last_report_date=None, last_report_pos={})
 
-harga = ambil_harga(tuple(universe))
-berita_map, berita_list = ambil_berita()
 
-rows = []
-for kode, df in harga.items():
-    try:
-        m = metrik(kode, df)
-        if m: rows.append(m)
-    except Exception:
-        continue
-rows, grup_lead, sekt_lead = hitung_peer_gap(rows)
-ph.empty()
+def deposit(st, amount, tanggal):
+    """Setoran modal baru (bukan untung). Masuk kas, dicatat terpisah, tidak merusak hitungan return."""
+    st["cash"] += float(amount)
+    st["modal_masuk"] = st.get("modal_masuk", st["modal_awal"]) + float(amount)
+    st["pending_dep"] = st.get("pending_dep", 0.0) + float(amount)
+    st.setdefault("deposits", []).append(dict(d=str(pd.Timestamp(tanggal).date()), jumlah=float(amount)))
+    return st
 
-lolos = [r for r in rows if
-         r[dasar_likuid] >= amb_likuid and
-         r["PRICE"] >= harga_min and
-         r["STOCH_K"] <= k_maks and
-         (not buang_stoch or r["STOCH_SIGNAL"] not in STOCH_BURUK) and
-         (not gate_naik or r["V_gateNaik"]) and
-         (not gate_turun or r["V_gateTurun"]) and
-         (r["V_dryUp"] is None or r["V_dryUp"] <= dry_maks) and
-         (not wajib_ma or r["MA_CROSS"]) and
-         (not wajib_obv or r["A_obvSlope"] > 0)]
-lolos = beri_skor(lolos, bobot, makro)
 
-pulse = "MIXED MARKET"
-if grup_lead:
-    teratas = sorted(grup_lead.items(), key=lambda x: -x[1][1])[:1]
-    if teratas and teratas[0][1][1] > 0.03:
-        pulse = f"ROTASI: {teratas[0][0]} (pemimpin {teratas[0][1][0]} {teratas[0][1][1]*100:+.1f}%)"
+# ---------------------------------------------------------------- PROSES SATU HARI
+def step(st, d, data, P, rb_by, sig_by_day):
+    """Proses satu hari bursa d: pagi (eksekusi order semalam), sore (cek SL),
+    malam (sinyal baru -> order besok). Logika identik dengan backtest."""
+    cash_in_next = 0.0
+    trx_val = 0.0
+    pos, pend = st["pos"], st["pend_buy"]
+    # ---- PAGI: v1.2 suspensi ke-N dibuka hari ini -> jual open
+    if SUSP_EXIT_N:
+        for k, p in pos.items():
+            df = data.get(k)
+            if p["sell"] or df is None or d not in df.index or p.get("zrun", 0) < 1 or p.get("neps", 0) < SUSP_EXIT_N:
+                continue
+            if float(df.at[d, "Volume"]) > 0:
+                p["sell"] = True; p["flag_d"] = str(d.date()); p["src"] = "suspensi dibuka"
+    # ---- PAGI: jual
+    for k in list(pos):
+        p = pos[k]
+        if not p["sell"]:
+            continue
+        df = data.get(k)
+        if df is None or d not in df.index:
+            continue
+        i = df.index.get_loc(d)
+        b = df.iloc[i]
+        pc = df.Close.iloc[i - 1] if i > 0 else b.Close
+        if b.Volume <= 0 or (b.High == b.Low and b.Close / pc - 1 <= ARB_LOCK):
+            continue
+        px = float(b.Open)
+        val = p["lot"] * 100 * px
+        net = val * (1 - FEE_S)
+        trx_val += val
+        cash_in_next += net
+        st["log"].append(dict(kode=k, beli=p["ed"], jual=str(d.date()), lot=p["lot"], harga_beli=p["ent"], harga_jual=px,
+                              modal=p["cost"], hasil=net, pnl=net - p["cost"], ret=net / p["cost"] - 1,
+                              sl0=p["sl0"], sl_akhir=p["sl"], naik_merah=p["steps"], flag_d=p.get("flag_d")))
+        st.setdefault("events", []).append(dict(d=str(d.date()), jenis="JUAL", kode=k, lot=p["lot"], harga=px, pnl=net - p["cost"], ret=net / p["cost"] - 1))
+        del pos[k]
+    # ---- PAGI: jual sebagian (penyesuaian manual, mis. FUJI ke jatah 5 jt)
+    for k in list(st.get("pend_trim", {})):
+        q = int(st["pend_trim"][k]); p = pos.get(k); df = data.get(k)
+        if p is None or q <= 0 or q >= p["lot"]:
+            st["pend_trim"].pop(k); continue
+        if df is None or d not in df.index:
+            continue
+        i = df.index.get_loc(d); b = df.iloc[i]
+        pc = df.Close.iloc[i - 1] if i > 0 else b.Close
+        if b.Volume <= 0 or (b.High == b.Low and b.Close / pc - 1 <= ARB_LOCK):
+            continue
+        px = float(b.Open); val = q * 100 * px; net = val * (1 - FEE_S)
+        cpart = p["cost"] * q / p["lot"]
+        trx_val += val; cash_in_next += net
+        st["log"].append(dict(kode=k, beli=p["ed"], jual=str(d.date()), lot=q, harga_beli=p["ent"], harga_jual=px, modal=cpart,
+                              hasil=net, pnl=net - cpart, ret=net / cpart - 1, sl0=p["sl0"], sl_akhir=p["sl"],
+                              naik_merah=p["steps"], flag_d=None, sebagian=True))
+        st.setdefault("events", []).append(dict(d=str(d.date()), jenis="JUAL SEBAGIAN", kode=k, lot=q, harga=px, pnl=net - cpart, ret=net / cpart - 1))
+        p["lot"] -= q; p["cost"] -= cpart
+        st["pend_trim"].pop(k)
+    # ---- PAGI: beli (urutan = prioritas semalam)
+    for k in list(pend):
+        o = pend.pop(k)
+        df = data.get(k)
+        st["reserved"] -= o["reserve"]
+        st["cash"] += o["reserve"]
+        if df is None or d not in df.index:
+            st["skipped"].append((o["d"], k, "tak ada bar")); st.setdefault("events", []).append(dict(d=str(d.date()), jenis="TERLEWAT", kode=k, alasan="tak ada bar")); continue
+        b = df.loc[d]
+        if b.Volume <= 0:
+            st["skipped"].append((o["d"], k, "suspend")); st.setdefault("events", []).append(dict(d=str(d.date()), jenis="TERLEWAT", kode=k, alasan="suspend")); continue
+        if b.Open >= b.High and b.Open / o["close"] - 1 >= ara_lim(o["close"]) - 0.01:
+            st["skipped"].append((o["d"], k, "ARA terkunci")); st.setdefault("events", []).append(dict(d=str(d.date()), jenis="TERLEWAT", kode=k, alasan="ARA terkunci")); continue
+        if b.Open > o["limit"]:
+            st["skipped"].append((o["d"], k, "gap > batas")); st.setdefault("events", []).append(dict(d=str(d.date()), jenis="TERLEWAT", kode=k, alasan="gap > batas")); continue
+        lot = o["lot"]
+        cost = lot * 100 * float(b.Open) * (1 + FEE_B)
+        if lot <= 0 or cost > st["cash"]:
+            st["skipped"].append((o["d"], k, "kas kurang saat isi")); st.setdefault("events", []).append(dict(d=str(d.date()), jenis="TERLEWAT", kode=k, alasan="kas kurang saat isi")); continue
+        st["cash"] -= cost
+        trx_val += lot * 100 * float(b.Open)
+        pos[k] = dict(ed=str(d.date()), ent=float(b.Open), lot=lot, cost=cost, sl0=o["sl0"], sl=o["sl0"], steps=0,
+                      csteps=0, hh=0.0, sig_d=o["d"], sell=False, src="garis-1ATR")
+        st.setdefault("events", []).append(dict(d=str(d.date()), jenis="BELI", kode=k, lot=lot, harga=float(b.Open), batas=o["limit"]))
+    # ---- SORE: catatan suspensi (v1.2)
+    for k, p in pos.items():
+        df = data.get(k)
+        if df is None or d not in df.index or pd.Timestamp(p["ed"]) >= d:
+            continue
+        if float(df.at[d, "Volume"]) <= 0:
+            if p.get("zrun", 0) == 0:
+                p["neps"] = p.get("neps", 0) + 1
+            p["zrun"] = p.get("zrun", 0) + 1
+        else:
+            p["zrun"] = 0
+    # ---- SORE: cek SL, lalu naikkan SL
+    for k, p in pos.items():
+        df = data.get(k)
+        if df is None or d not in df.index or p["sell"]:
+            continue
+        c = float(df.at[d, "Close"])
+        if c < p["sl"]:
+            p["sell"] = True; p["flag_d"] = str(d.date())
+            continue
+        rb = rb_by.get(k)
+        if rb is not None and d in rb.index and d > pd.Timestamp(p["sig_d"]):
+            lv = float(rb.loc[[d]].max())
+            if lv > p["sl"]:
+                p["sl"] = lv; p["steps"] += 1; p["src"] = "merah tembus"
+        p["hh"] = max(p["hh"], float(df.at[d, "High"]))
+        ch = p["hh"] - CHAND_K * float(P["ATRS"][k].at[d])
+        if ch > p["sl"]:
+            p["sl"] = ch; p["csteps"] += 1; p["src"] = "high-4ATR"
+    # ---- SORE: pagar jual (v1.1)
+    if FENCE_N and IHSG_RET is not None and d in IHSG_RET.index and IHSG_RET.at[d] <= FENCE_IHSG:
+        ds = str(d.date())
+        baru = [(k, p) for k, p in pos.items() if p["sell"] and p.get("flag_d") == ds and not p.get("delayed")]
+        if len(baru) >= FENCE_N:
+            for k, p in baru:
+                df = data[k]
+                p["sell"] = False; p["delayed"] = True; p["delay_d"] = ds
+                rb = rb_by.get(k)
+                if rb is not None and d in rb.index and d > pd.Timestamp(p["sig_d"]):
+                    lv = float(rb.loc[[d]].max())
+                    if lv > p["sl"]:
+                        p["sl"] = lv; p["steps"] += 1; p["src"] = "merah tembus"
+                p["hh"] = max(p["hh"], float(df.at[d, "High"]))
+                ch = p["hh"] - CHAND_K * float(P["ATRS"][k].at[d])
+                if ch > p["sl"]:
+                    p["sl"] = ch; p["csteps"] += 1; p["src"] = "high-4ATR"
+                st.setdefault("events", []).append(dict(d=ds, jenis="TUNDA JUAL", kode=k, n=len(baru), ihsg=float(IHSG_RET.at[d])))
+    if trx_val > BATAS_MATERAI:
+        st["cash"] -= MATERAI; st["materai_total"] += MATERAI
+    st["cash"] += cash_in_next
+    # ---- MALAM: sinyal baru -> order pre-opening besok
+    for s in sorted(sig_by_day.get(d, []), key=lambda z: -z["val"]):
+        k = s["kode"]
+        if k in pos or k in pend:
+            st["skipped"].append((str(d.date()), k, "sudah dipegang")); continue
+        lot = int(ALLOC // (s["close"] * 100 * (1 + FEE_B)))
+        lim = float(floor_tick(s["close"] * (1 + LIMIT_PCT)))
+        reserve = lot * 100 * lim * (1 + FEE_B)
+        if lot <= 0 or reserve > st["cash"]:
+            st["skipped"].append((str(d.date()), k, "kas kurang")); continue
+        st["cash"] -= reserve; st["reserved"] += reserve
+        pend[k] = dict(val=s["val"], d=str(d.date()), close=float(s["close"]), lot=lot, limit=lim, reserve=reserve,
+                       sl0=float(s["sl0"]), line=float(s["line"]), atr=float(s["atr"]), touches=int(s["touches"]))
+    # ---- nilai ekuitas (close terakhir yang diketahui)
+    mv = 0.0
+    for k, p in pos.items():
+        df = data[k]
+        last = df.Close[df.index <= d]
+        mv += p["lot"] * 100 * float(last.iloc[-1])
+    st["equity"].append(dict(d=str(d.date()), cash=st["cash"], reserved=st["reserved"], mv=mv,
+                             eq=st["cash"] + st["reserved"] + mv, npos=len(pos), dep=st.get("pending_dep", 0.0)))
+    st["pending_dep"] = 0.0
+    st["events"] = st.get("events", [])[-300:]
+    st["last_date"] = str(d.date())
+    if st["cash"] < -1e-6:
+        raise RuntimeError(f"Kas negatif di {d}: {st['cash']}")
+    return st
 
-st.markdown(f"<div style='text-align:center;margin-bottom:10px;color:#00ffcc;font-family:Orbitron;"
-            f"letter-spacing:2px;font-size:11px'>📡 {pulse} &nbsp;·&nbsp; {len(rows)} emiten dihitung "
-            f"({sumber_universe}) &nbsp;·&nbsp; {len(lolos)} lolos saringan &nbsp;·&nbsp; "
-            f"{datetime.now(WIB).strftime('%d %b %Y %H:%M WIB')}</div>", unsafe_allow_html=True)
 
-if not lolos:
-    st.error("Tidak ada saham yang lolos. Longgarkan saringan — biasanya ambang likuiditas atau gerbang volume.")
-    st.stop()
+def _indexes(P, start=None):
+    rb_by = {k: (pd.DataFrame(v, columns=["d", "lv"]).set_index("d")["lv"] if v else pd.Series(dtype=float)) for k, v in P["RB"].items()}
+    sig_by_day = {}
+    for k, lst in P["SIG"].items():
+        for s in lst:
+            if start is None or s["d"] >= pd.Timestamp(start):
+                sig_by_day.setdefault(s["d"], []).append(s)
+    return rb_by, sig_by_day
 
-df_tampil = pd.DataFrame([{
-    "SYMBOL": r["SYMBOL"], "CONF": r["CONF"], "PRICE": int(r["PRICE"]), "CHG%": round(r["CHG"]*100, 2),
-    "STOCH": f"{r['STOCH_K']:.0f}/{r['STOCH_D']:.0f}", "STOCH_SIGNAL": r["STOCH_SIGNAL"],
-    "FASE_NAIK": r["V_naikVonis"], "FASE_TURUN": r["V_turunVonis"],
-    "T/N": None if r["V_dryUp"] is None else round(r["V_dryUp"], 2),
-    "GAP": round(r["PEER_GAP"]*100, 1), "BASIS": r["PEER_BASIS"],
-    "MIN/HARI": round(r["TURN_MIN20"]/1e9, 2), "HARI≥5M": r["HARI_5M"], "PORTO": r["PORTO"],
-} for r in lolos])
 
-col_main, col_news = st.columns([3, 1])
+def set_ihsg(ihsg, data):
+    """Return harian IHSG di kalender bursa saham (hari tanpa data IHSG = 0, tidak memicu pagar)."""
+    global IHSG_RET
+    cal = calendar(data)
+    IHSG_RET = ihsg.reindex(cal).ffill().pct_change()
+    return IHSG_RET
 
-with col_main:
-    st.markdown("<h3 style='font-family:Orbitron;color:#ff0055;font-size:17px'>📡 KANDIDAT TERSARING</h3>",
-                unsafe_allow_html=True)
-    st.dataframe(df_tampil, use_container_width=True, hide_index=True, height=380, column_config={
-        "CONF": st.column_config.ProgressColumn("SKOR", min_value=0, max_value=100, format="%.1f"),
-        "T/N": st.column_config.NumberColumn("TURUN/NAIK", format="%.2fx",
-               help="Volume saat turun dibagi volume saat naik. Di bawah 0,70 = barang tidak dilepas."),
-        "GAP": st.column_config.NumberColumn("KETINGGALAN", format="%.1fpp"),
-        "MIN/HARI": st.column_config.NumberColumn("MIN Rp M", format="%.2f",
-               help="Transaksi harian TERKECIL dalam 20 hari, bukan rata-rata."),
-        "STOCH_SIGNAL": st.column_config.TextColumn("KONDISI D1"),
-    })
 
-    st.markdown("<h3 style='font-family:Orbitron;color:#00ffcc;font-size:17px;margin-top:14px'>"
-                "📊 MONITORING 4 TERATAS</h3>", unsafe_allow_html=True)
-    for i in range(0, min(4, len(lolos)), 2):
-        cols = st.columns(2)
-        for j, r in enumerate(lolos[i:i+2]):
-            with cols[j]:
-                css_st = ("pixel-value-up" if r["STOCH_SCORE"] >= 70 else
-                          "pixel-value-neutral" if r["STOCH_SCORE"] >= 36 else "pixel-value-down")
-                css_v = "pixel-value-up" if r["V_turunSkor"] >= 75 else "pixel-value-down"
-                dry_s = "–" if r["V_dryUp"] is None else f"{r['V_dryUp']:.2f}x"
-                st.markdown(f"""<div class="pixel-container">
-                  <div class="pixel-metric"><span class="pixel-title">TREND</span>
-                    <span class="{'pixel-value-up' if r['MA_CROSS'] else 'pixel-value-down'}">
-                    {'BULLISH' if r['MA_CROSS'] else 'BEARISH'}</span></div>
-                  <div class="pixel-metric"><span class="pixel-title">STOCH K/D</span>
-                    <span class="{css_st}">{r['STOCH_K']:.0f}/{r['STOCH_D']:.0f}</span></div>
-                  <div class="pixel-metric"><span class="pixel-title">TURUN/NAIK</span>
-                    <span class="{css_v}">{dry_s}</span></div>
-                  <div class="pixel-metric"><span class="pixel-title">MIN/HARI</span>
-                    <span class="pixel-value-neutral">{r['TURN_MIN20']/1e9:.1f}M</span></div>
-                </div>""", unsafe_allow_html=True)
-                st.plotly_chart(grafik(r), use_container_width=True)
+def calendar(data):
+    return sorted(set().union(*[set(df.index) for df in data.values()]))
 
-    st.markdown("<h3 style='font-family:Orbitron;color:#ff0055;font-size:17px;margin-top:20px'>"
-                "📝 TESIS</h3>", unsafe_allow_html=True)
-    for r in lolos[:5]:
-        st.markdown(f"""<div class="thesis-box">
-          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-            <span style="color:#ff0055;font-weight:bold;font-size:14px">
-              #{r['RANK']} {r['SYMBOL']} <span style="color:#7c8a94;font-size:11px">{r['GROUP']}</span></span>
-            <span style="color:#00ffcc;font-family:JetBrains Mono;font-size:10px">
-              SKOR {r['CONF']:.1f} · {r['PORTO']}</span></div>
-          <div class="thesis-header">ANALISIS:</div>
-          <div style="color:#e0e0e0">{bangun_tesis(r, makro, berita_map, tp_pct, sl_pct)}</div>
-        </div>""", unsafe_allow_html=True)
 
-with col_news:
-    st.markdown("<h3 style='font-family:Orbitron;color:#fff;font-size:17px'>💡 INTEL</h3>",
-                unsafe_allow_html=True)
-    if berita_list:
-        st.markdown('<div class="news-scroll-box">', unsafe_allow_html=True)
-        for it in berita_list[:20]:
-            q = urllib.parse.quote(it["NEWS"])
-            st.markdown(f'<div class="news-box"><div class="news-topic-header">{it["TOPIC"]}</div>'
-                        f'<div class="news-text"><a href="https://www.google.com/search?q={q}" '
-                        f'target="_blank">{it["NEWS"]}</a></div></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+def run_days(st, data, P, days):
+    rb_by, sig_by_day = _indexes(P)
+    for d in days:
+        step(st, d, data, P, rb_by, sig_by_day)
+    return st
+
+
+def backtest(data, start="2020-01-01", end=None, modal=MODAL_AWAL, P=None):
+    P = P or prepare(data)
+    st = new_state(modal)
+    days = [d for d in calendar(data) if d >= pd.Timestamp(start) and (end is None or d <= pd.Timestamp(end))]
+    return run_days(st, data, P, days), P
+
+
+def nightly(st, data, P):
+    """Proses semua hari bursa setelah st['last_date'] sampai data terakhir."""
+    last = pd.Timestamp(st["last_date"]) if st["last_date"] else None
+    days = [d for d in calendar(data) if last is None or d > last]
+    if last is None and days:
+        days = days[-1:]          # mulai baru: hanya hari terakhir (cari sinyal untuk besok)
+    return run_days(st, data, P, days), days
+
+
+# ---------------------------------------------------------------- LAPORAN
+def warnings_for(k, data, d=None):
+    w = []
+    if k in RED_FLAG:
+        w.append("red-flag")
+    df = data.get(k)
+    if df is not None:
+        v = df.Volume if d is None else df.Volume[df.index <= d]
+        if (v.tail(SUSP_WARN_LB) <= 0).any():
+            w.append("pernah suspend/tanpa transaksi 120 hari")
+    return w
+
+
+def next_red_above(k, P, price):
+    """Harga close (sesuai fraksi) yang membuat SL naik ke garis merah terdekat di atas harga."""
+    for r in P["REDS"].get(k, []):
+        if r["naik_jika_close"] > price:
+            return r["naik_jika_close"]
+    return None
+
+
+def report(st, data, P):
+    d = pd.Timestamp(st["last_date"])
+    beli = []
+    for k, o in st["pend_buy"].items():
+        beli.append(dict(kode=k, lot=o["lot"], close_sinyal=o["close"], harga_batas=o["limit"], jual_jika_close_maks=trigger_price(o["sl0"]),
+                         modal_maks=round(o["reserve"]), peringatan=", ".join(warnings_for(k, data, d))))
+    jual, hold = [], []
+    for k, p in st["pos"].items():
+        df = data[k]
+        c = float(df.Close[df.index <= d].iloc[-1])
+        last_bar = df.index[df.index <= d][-1]
+        row = dict(kode=k, tgl_beli=p["ed"], harga_beli=p["ent"], lot=p["lot"], close=c,
+                   pl_pct=round((c * (1 - FEE_S) / (p["ent"] * (1 + FEE_B)) - 1) * 100, 2),
+                   pl_rp=round(p["lot"] * 100 * c * (1 - FEE_S) - p["cost"]),
+                   jual_jika_close_maks=trigger_price(p["sl"]), sumber_sl=p.get("src", ""), sl_naik_jika_close=next_red_above(k, P, c),
+                   data_terakhir=str(last_bar.date()), peringatan=", ".join(warnings_for(k, data, d)))
+        if p["sell"]:
+            row["status"] = "JUAL BESOK OPEN"
+            jual.append(row)
+        else:
+            row["status"] = "HOLD"
+            hold.append(row)
+    eq = st["equity"][-1] if st["equity"] else dict(eq=st["cash"], cash=st["cash"], reserved=0, mv=0)
+    skip_today = [s for s in st["skipped"] if s[0] == st["last_date"]]
+    return dict(tanggal=st["last_date"], ekuitas=eq["eq"], kas=eq["cash"], kas_terkunci=eq["reserved"], nilai_saham=eq["mv"],
+                beli=beli, jual=jual, hold=hold, terlewat=skip_today,
+                realized=sum(x["pnl"] for x in st["log"]), materai=st["materai_total"])
+
+
+def report_text(R):
+    f = lambda x: f"{x:,.0f}".replace(",", ".")
+    L = [f"LAPORAN SISTEM TRENDLINE — data close {R['tanggal']}",
+         f"Ekuitas {f(R['ekuitas'])} | Kas {f(R['kas'])} | Kas terkunci order {f(R['kas_terkunci'])} | Saham {f(R['nilai_saham'])}", ""]
+    L.append(f"BELI BESOK (pre-opening, harga batas): {len(R['beli'])}")
+    for b in R["beli"]:
+        L.append(f"  {b['kode']:5} {b['lot']} lot  batas {f(b['harga_batas'])}  (close {f(b['close_sinyal'])})  jual jika close <= {f(b['jual_jika_close_maks'])}"
+                 + (f"  ⚠ {b['peringatan']}" if b["peringatan"] else ""))
+    L.append(f"JUAL BESOK OPEN: {len(R['jual'])}")
+    for j in R["jual"]:
+        L.append(f"  {j['kode']:5} {j['lot']} lot  close {f(j['close'])} <= {f(j['jual_jika_close_maks'])}  P/L {j['pl_pct']:+.1f}%")
+    L.append(f"POSISI HOLD: {len(R['hold'])}")
+    for h in R["hold"]:
+        nr = f"{f(h['sl_naik_jika_close'])}" if h["sl_naik_jika_close"] else "-"
+        L.append(f"  {h['kode']:5} {h['lot']} lot  beli {f(h['harga_beli'])} ({h['tgl_beli']})  close {f(h['close'])}  "
+                 f"P/L {h['pl_pct']:+.1f}%  jual jika close <= {f(h['jual_jika_close_maks'])} [{h['sumber_sl']}]  SL naik jika close >= {nr}"
+                 + (f"  ⚠ {h['peringatan']}" if h["peringatan"] else ""))
+    if R["terlewat"]:
+        L.append("TERLEWAT: " + ", ".join(f"{k} ({a})" for _, k, a in R["terlewat"]))
+    return "\n".join(L)
+
+
+# ---------------------------------------------------------------- STATE JSON
+def state_to_json(st):
+    return json.dumps(st, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else float(o), indent=1)
+
+
+def state_from_json(s):
+    st = json.loads(s)
+    st["skipped"] = [tuple(x) for x in st.get("skipped", [])]
+    return st
+
+
+# ---------------------------------------------------------------- LAPORAN MALAM (dipakai jadwal otomatis)
+def fetch_ihsg(start=START_DATA):
+    import yfinance as yf
+    end = (pd.Timestamp.now(tz="Asia/Jakarta").normalize() + pd.Timedelta(days=2)).strftime("%Y-%m-%d")
+    d = yf.download("^JKSE", start=start, end=end, progress=False, auto_adjust=False)
+    c = d["Close"]
+    if isinstance(c, pd.DataFrame):
+        c = c.iloc[:, 0]
+    return c.dropna()
+
+
+def twr(st):
+    """Return time-weighted sejak mulai: setoran tidak dihitung sebagai untung."""
+    prod, prev = 1.0, None
+    start = st.get("start_date")
+    for e in st["equity"]:
+        if start is not None and e["d"] <= start:
+            prev = e["eq"]; continue
+        base = prev if prev is not None else st["modal_awal"]
+        prod *= (e["eq"] - e.get("dep", 0.0)) / base
+        prev = e["eq"]
+    return prod - 1
+
+
+def init_live(data, P, ihsg, modal, tanggal=None):
+    """Buat state live baru: proses hari bursa terakhir saja (cari sinyal untuk besok)."""
+    st = new_state(modal)
+    st, days = nightly(st, data, P)
+    D = pd.Timestamp(st["last_date"])
+    st["start_date"] = st["last_date"]
+    st["ihsg_start"] = float(ihsg[ihsg.index <= D].iloc[-1])
+    return st
+
+
+def _f(x):
+    return "-" if x is None else f"{x:,.0f}".replace(",", ".")
+
+
+def _jt(x):
+    return f"{x / 1e6:,.1f}".replace(",", "X").replace(".", ",").replace("X", ".") + " jt"
+
+
+def _pct(x):
+    return f"{x * 100:+.1f}%".replace(".", ",")
+
+
+def sisa_komitmen(st):
+    """Bagian komitmen yang belum disetor ke akun."""
+    return max(0.0, st.get("komitmen", st["modal_masuk"]) - st.get("disetor", st["modal_masuk"]))
+
+
+def perlu_setor(st):
+    """Setoran minimal sebelum pre-opening supaya kas riil di akun cukup untuk order besok."""
+    return min(sisa_komitmen(st), max(0.0, sisa_komitmen(st) - st["cash"]))
+
+
+def kas_riil(st):
+    """Kas bebas riil di akun setelah order besok dikunci (sebelum setoran)."""
+    return st["cash"] - sisa_komitmen(st)
+
+
+def catat_setoran(st, jumlah, tanggal):
+    """Uang yang benar-benar disetor ke akun FD untuk sistem ini (bukan tambahan modal sistem)."""
+    st["disetor"] = st.get("disetor", 0.0) + float(jumlah)
+    st.setdefault("setoran", []).append(dict(d=str(pd.Timestamp(tanggal).date()), jumlah=float(jumlah)))
+    return st
+
+
+def _aksi_lines(st, data, D):
+    """Bagian AKSI HARI BURSA BERIKUTNYA (dipakai laporan malam dan diulang hari Minggu)."""
+    L = []
+    jual = [(k, p) for k, p in st["pos"].items() if p["sell"]]
+    L.append("JUAL di pre-opening (antri di harga batas ARB, terisi di harga pembukaan):" if jual else "JUAL: -")
+    for k, p in jual:
+        c = float(data[k].Close[data[k].index <= D].iloc[-1])
+        pl = c * (1 - FEE_S) / (p["ent"] * (1 + FEE_B)) - 1
+        why = "suspensi ke-%d dibuka" % p.get("neps", 0) if p.get("src") == "suspensi dibuka" else f"close {_f(c)} ≤ {_f(trigger_price(p['sl']))}"
+        L.append(f"  {k} {p['lot']} lot @ {_f(arb_price(c, D + pd.Timedelta(days=1)))} — {why} (P/L {_pct(pl)})"
+                 + (f" ⚠ {', '.join(warnings_for(k, data, D))}" if warnings_for(k, data, D) else ""))
+    for k, q in st.get("pend_trim", {}).items():
+        if k in st["pos"]:
+            c = float(data[k].Close[data[k].index <= D].iloc[-1])
+            L.append(f"JUAL SEBAGIAN: {k} {q} lot @ {_f(arb_price(c, D + pd.Timedelta(days=1)))} (penyesuaian ke jatah 5 jt, sisa {st['pos'][k]['lot'] - q} lot)")
+    for k, p in st["pos"].items():
+        if p.get("zrun", 0) > 0 and not p["sell"]:
+            msg = f"⏸ {k} sedang suspensi ke-{p.get('neps', 0)} (sudah {p['zrun']} hari bursa)"
+            if SUSP_EXIT_N and p.get("neps", 0) >= SUSP_EXIT_N:
+                msg += " → begitu BEI umumkan dibuka, antri JUAL semua lot di pre-opening hari itu (harga batas ARB)"
+            L.append(msg)
+    return L
+
+
+def _ringkas_rows(st, close, D):
+    """Baris tabel ringkas: aksi besok + posisi dipegang. Disimpan juga untuk laporan Minggu."""
+    R = [f"{'Aksi':5} {'Kode':5} {'Lot':>6}  {'Harga':<17} Jual jika close ≤"]
+    for k, p in st["pos"].items():
+        if p["sell"]:
+            c = close(k)
+            R.append(f"{'JUAL':5} {k:5} {_f(p['lot']):>6}  {'@' + _f(arb_price(c, D + pd.Timedelta(days=1))) + ' (ARB)':<17} -")
+    for k, q in st.get("pend_trim", {}).items():
+        if k in st["pos"]:
+            c = close(k)
+            R.append(f"{'JUAL':5} {k:5} {_f(q):>6}  {'@' + _f(arb_price(c, D + pd.Timedelta(days=1))) + ' (sbgn)':<17} -")
+    if not any(p["sell"] for p in st["pos"].values()) and not st.get("pend_trim"):
+        R.append(f"{'JUAL':5} -")
+    for k, o in st["pend_buy"].items():
+        R.append(f"{'BELI':5} {k:5} {_f(o['lot']):>6}  {'≤' + _f(o['limit']):<17} {_f(trigger_price(o['sl0']))}")
+    if not st["pend_buy"]:
+        R.append(f"{'BELI':5} -")
+    prev = st.get("last_report_pos", {})
+    for k, p in st["pos"].items():
+        if p["sell"]:
+            continue
+        c = close(k)
+        pl = c * (1 - FEE_S) / (p["ent"] * (1 + FEE_B)) - 1
+        trig = trigger_price(p["sl"])
+        naik = k in prev and trig > prev[k]
+        R.append(f"{'POS':5} {k:5} {_f(p['lot']):>6}  {_f(p['ent']) + '→' + _f(c) + ' (' + _pct(pl) + ')':<17} {_f(trig)}" + (" ↑" if naik else ""))
+    for k, p in st["pos"].items():
+        if p.get("zrun", 0) > 0 and not p["sell"]:
+            R.append(f"⏸ {k} suspensi ke-{p.get('neps', 0)} ({p['zrun']} hari bursa)")
+    return R
+
+
+def nightly_report(st, data, P, ihsg, full=None):
+    """Teks laporan malam + banner notifikasi. Mengubah st (catatan laporan terakhir)."""
+    d = st["last_date"]
+    D = pd.Timestamp(d)
+    hari = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"][D.weekday()]
+    full = (D.weekday() == 4) if full is None else full
+    since = st.get("last_report_date")
+    ev = [e for e in st.get("events", []) if since is None or e["d"] > since]
+    # kelengkapan data
+    aktif = [k for k, df in data.items() if len(df) and df.index[-1] >= D - pd.Timedelta(days=10)
+             and df.Volume[df.index <= D].tail(5).sum() > 0]          # saham suspend/tanpa transaksi tidak dihitung
+    lengkap = sum(1 for k in aktif if D in data[k].index)
+    L = [f"TRENDLINE v{VERSION.split()[0]} • {AKUN} • close {hari} {D.day} {D.strftime('%b %Y')}",
+         f"Data: {lengkap}/{len(aktif)} emiten aktif ter-update" + (" ✓" if lengkap >= 0.95 * len(aktif) else " ⚠ banyak yang belum update, cek lagi besok pagi"), ""]
+    # ---- aksi besok
+    jual = [(k, p) for k, p in st["pos"].items() if p["sell"]]
+    L.append("━━ AKSI HARI BURSA BERIKUTNYA ━━")
+    a0 = len(L)
+    L += _aksi_lines(st, data, D)
+    tunda = [e for e in ev if e["jenis"] == "TUNDA JUAL"]
+    if tunda:
+        L.append(f"PAGAR JUAL AKTIF: {tunda[0]['n']} posisi kena SL dan IHSG {_pct(tunda[0]['ihsg'])} hari ini → jual DITUNDA 1 hari:")
+        L.append("  " + ", ".join(e["kode"] for e in tunda) + " (jangan dijual besok; dicek ulang besok sore)")
+    L.append("BELI di pre-opening (harga batas; GTC boleh, CANCEL 09.00 kalau belum terisi):" if st["pend_buy"] else "BELI: -")
+    siap = 0.0
+    for k, o in st["pend_buy"].items():
+        siap += o["reserve"]
+        w = warnings_for(k, data, D)
+        L.append(f"  {k} {o['lot']} lot @ maks {_f(o['limit'])} (close {_f(o['close'])}) → jual jika close ≤ {_f(trigger_price(o['sl0']))}"
+                 + (f" ⚠ {', '.join(w)}" if w else ""))
+    if st["pend_buy"]:
+        L.append(f"Kas yang dikunci order beli: {_jt(siap)}")
+    lewat = [s_[1] for s_ in st["skipped"] if s_[0] == d and s_[2] == "kas kurang"]
+    if lewat:
+        L.append("Sinyal terlewat (kas komitmen 100 jt habis): " + ", ".join(lewat))
+    ps = perlu_setor(st)
+    L.append(f"💰 SETOR sebelum pre-opening: {_jt(ps)}" if ps > 0 else "💰 Setor: tidak perlu, kas di akun cukup")
+    st["last_aksi"] = L[a0:]
+    # ---- cek eksekusi
+    L += ["", "━━ EKSEKUSI MEKANIS (asumsi ikut penuh) ━━"]
+    if not ev:
+        L.append("  Tidak ada transaksi.")
+    for e in ev:
+        if e["jenis"] == "BELI":
+            L.append(f"  ✓ Beli {e['kode']} {e['lot']} lot @{_f(e['harga'])} (open {e['d']})")
+        elif e["jenis"] == "JUAL":
+            L.append(f"  ✓ Jual {e['kode']} {e['lot']} lot @{_f(e['harga'])} (open {e['d']}) → {_pct(e['ret'])} / Rp{_f(e['pnl'])}")
+        elif e["jenis"] == "JUAL SEBAGIAN":
+            L.append(f"  ✓ Jual sebagian {e['kode']} {e['lot']} lot @{_f(e['harga'])} (open {e['d']}) → {_pct(e['ret'])} / Rp{_f(e['pnl'])}")
+        elif e["jenis"] == "TERLEWAT":
+            L.append(f"  ✗ {e['kode']} tidak terbeli ({e['d']}): {e['alasan']}")
+    # ---- posisi
+    baru = {e["kode"] for e in ev if e["jenis"] == "BELI"}
+    prev = st.get("last_report_pos", {})
+    rows, sama, now_trig = [], 0, {}
+    for k, p in st["pos"].items():
+        if p["sell"]:
+            continue
+        c = float(data[k].Close[data[k].index <= D].iloc[-1])
+        trig = trigger_price(p["sl"])
+        now_trig[k] = trig
+        naik = k in prev and trig > prev[k]
+        pl = c * (1 - FEE_S) / (p["ent"] * (1 + FEE_B)) - 1
+        nxt = next_red_above(k, P, c)
+        w = warnings_for(k, data, D)
+        line = (f"  {k:5} {p['lot']} lot  avg {_f(p['ent'])}  close {_f(c)}  {_pct(pl)}  jual≤{_f(trig)}"
+                + (" ↑" if naik else "") + (" (baru)" if k in baru else "")
+                + f"  SL naik jika ≥{_f(nxt)}" + (f"  ⚠ {', '.join(w)}" if w else ""))
+        if full or naik or k in baru:
+            rows.append(line)
+        else:
+            sama += 1
+    n_hold = sum(1 for p in st["pos"].values() if not p["sell"])
+    L += ["", f"━━ POSISI ({n_hold}) — " + ("LENGKAP (Jumat)" if full else "yang berubah saja") + " ━━"]
+    L += rows if rows else ["  Tidak ada perubahan."]
+    if not full and sama:
+        L.append(f"  {sama} posisi lain tidak berubah.")
+    L.append("  ↑ = SL naik hari ini: catat angka jual≤ yang baru. SL dicek dari CLOSE, jangan pasang SL otomatis Stockbit;"
+             " jual hanya kalau muncul instruksi JUAL di laporan malam")
+    # ---- akun
+    eq = st["equity"][-1]
+    ih = float(ihsg[ihsg.index <= D].iloc[-1]) if len(ihsg[ihsg.index <= D]) else None
+    ih_ret = (ih / st["ihsg_start"] - 1) if (ih and st.get("ihsg_start")) else None
+    r = twr(st)
+    realized = sum(x["pnl"] for x in st["log"])
+    if ih:
+        st.setdefault("ihsg_hist", {})[d] = ih
+    st["snap"] = {k: float(data[k].Close[data[k].index <= D].iloc[-1]) for k in list(st["pos"]) + list(st["pend_buy"])}
+    L += ["", "━━ AKUN (sejak " + str(st.get("start_date")) + ") ━━",
+          f"Ekuitas {_jt(eq['eq'])} dari komitmen {_jt(st['modal_masuk'])} | P/L {_jt(eq['eq'] - st['modal_masuk'])}",
+          f"Sistem {_pct(r)} vs IHSG {_pct(ih_ret) if ih_ret is not None else '-'}" + (f" (IHSG {_f(ih)})" if ih else ""),
+          f"Sudah disetor {_jt(st.get('disetor', st['modal_masuk']))} | sisa komitmen {_jt(sisa_komitmen(st))} | kas riil bebas {_jt(max(0.0, kas_riil(st)))} | realized {_jt(realized)}"]
+    aksi = ("Setor " + _jt(perlu_setor(st)) + " · " if perlu_setor(st) > 0 else "") + "Beli " + (", ".join(f"{k} {_f(o['lot'])} lot ≤{_f(o['limit'])}" for k, o in st["pend_buy"].items()) or "-") \
+        + " · Jual " + (", ".join([f"{k} {_f(p['lot'])} lot" for k, p in jual] + [f"{k} {_f(q)} lot (sebagian)" for k, q in st.get("pend_trim", {}).items() if k in st["pos"]]) or "-") \
+        + " · SL naik " + (", ".join(k for k in now_trig if k in prev and now_trig[k] > prev[k]) or "-")
+    banner = f"Trendline – {AKUN_NAMA.title()}: " + aksi
+    rows = _ringkas_rows(st, lambda k: float(data[k].Close[data[k].index <= D].iloc[-1]), D)
+    foot = (f"Setor {_jt(perlu_setor(st))} sebelum pre-opening | " if perlu_setor(st) > 0 else "") + \
+           f"Kas order {_jt(siap)} | Ekuitas {_jt(eq['eq'])} ({_pct(r)} vs IHSG {_pct(ih_ret) if ih_ret is not None else '-'})"
+    ringkas = [f"TRENDLINE – {AKUN_NAMA}", f"close {hari} {D.day} {D.strftime('%b %Y')}", ""] + rows + ["", foot]
+    st["last_report_date"] = d
+    st["last_report_pos"] = now_trig
+    return dict(banner=banner, ringkas="\n".join(ringkas), text="\n".join(L), full=full)
+
+
+# ---------------------------------------------------------------- CLI (dipakai jadwal otomatis)
+def run_nightly(state_path, out_path, now=None, raw=None, ihsg=None, wait=300):
+    """Satu kali jalan laporan malam. Hasil: file state (diperbarui bila OK) dan file laporan
+    berisi baris TANGGAL DATA / STATUS / BANNER lalu teks laporan."""
+    import time
+    from datetime import timedelta, timezone
+    now = now or datetime.now(timezone(timedelta(hours=7)))
+    today = pd.Timestamp(now.date())
+
+    def gagal(D, msg):
+        open(out_path, "w").write(f"TANGGAL DATA: {D}\nSTATUS: GAGAL - {msg}\nBANNER: Trendline – {AKUN_NAMA.title()}: GAGAL - {msg}\n")
+        return dict(status="GAGAL", msg=msg)
+
+    st = state_from_json(open(state_path).read())
+    import os
+    uji = os.environ.get("TL_UJI_SAMPAI")       # mode uji: potong data sampai tanggal ini, state uji terpisah
+    if uji:
+        U = pd.Timestamp(uji)
+        raw = {k: df[df.index <= U] for k, df in (raw if raw is not None else download_all()).items() if (df.index <= U).sum() > 250}
+        ihsg = (ihsg if ihsg is not None else fetch_ihsg())
+        ihsg = ihsg[ihsg.index <= U]
+        now = datetime(U.year, U.month, U.day, 21, 40, tzinfo=timezone(timedelta(hours=7)))
+        today = pd.Timestamp(now.date())
+    for attempt in range(3):
+        r = raw if raw is not None else download_all()
+        D = max(df.index[-1] for df in r.values())
+        if raw is not None or D >= today or now.weekday() >= 5:
+            break
+        time.sleep(wait)
+    ih = ihsg if ihsg is not None else fetch_ihsg()
+    if D < today and now.weekday() < 5:
+        return gagal(D.date(), f"Belum ada data close hari ini ({today.date()}): libur bursa atau Yahoo telat. Data terakhir {D.date()}. Posisi tidak diubah.")
+    aktif = [k for k, df in r.items() if df.Volume.tail(5).sum() > 0 and df.index[-1] >= D - pd.Timedelta(days=10)]
+    tertinggal = [k for k in aktif if r[k].index[-1] < D]
+    if ih.index[-1] > D or len(tertinggal) > 0.10 * len(aktif):
+        return gagal(D.date(), f"Data Yahoo belum lengkap (IHSG {ih.index[-1].date()}, {len(tertinggal)}/{len(aktif)} emiten aktif tertinggal). Posisi tidak diubah.")
+    if st["last_date"] and pd.Timestamp(st["last_date"]) >= D:
+        return gagal(D.date(), f"Data {D.date()} sudah diproses sebelumnya. Posisi tidak diubah.")
+    data, clog = clean_all(r)
+    P = prepare(data)
+    set_ihsg(ih, data)
+    st, days = nightly(st, data, P)
+    if st.get("start_date") is None:            # laporan pertama: titik awal pembanding IHSG
+        st["start_date"] = st["last_date"]
+        st["ihsg_start"] = float(ih[ih.index <= pd.Timestamp(st["last_date"])].iloc[-1])
+    rep = nightly_report(st, data, P, ih)
+    open(state_path, "w").write(state_to_json(st))
+    label = "UJI (data lama, bukan sinyal hari ini) — " if os.environ.get("TL_UJI_SAMPAI") else ""
+    open(out_path, "w").write(f"TANGGAL DATA: {st['last_date']}\nSTATUS: OK\nBANNER: {label}{rep['banner']}\n\n{label}{rep['ringkas']}"
+                              f"\n\n──────── LAPORAN LENGKAP ────────\n\n{label}{rep['text']}\n")
+    return dict(status="OK", banner=rep["banner"], text=rep["text"], days=[str(x.date()) for x in days])
+
+
+def sunday_report(st, today=None):
+    """Laporan Minggu malam: ulang aksi Senin dari laporan Jumat + tutup buku mingguan. Tanpa unduh data."""
+    from datetime import timedelta, timezone
+    today = pd.Timestamp(today) if today is not None else pd.Timestamp(datetime.now(timezone(timedelta(hours=7))).date())
+    D = pd.Timestamp(st["last_date"])
+    mon = D - pd.Timedelta(days=D.weekday())                       # Senin minggu data terakhir
+    eqs = st["equity"]
+    prev = [e for e in eqs if pd.Timestamp(e["d"]) < mon]
+    wk = [e for e in eqs if pd.Timestamp(e["d"]) >= mon]
+    e0 = prev[-1]["eq"] if prev else st["modal_masuk"]
+    e1 = eqs[-1]["eq"]
+    r_w = 1.0
+    base = e0
+    for e in wk:
+        r_w *= (e["eq"] - e.get("dep", 0.0)) / base
+        base = e["eq"]
+    r_w -= 1
+    tr = [x for x in st["log"] if pd.Timestamp(x["jual"]) >= mon]
+    rz_w = sum(x["pnl"] for x in tr)
+    rz_all = sum(x["pnl"] for x in st["log"])
+    ih = st.get("ihsg_hist", {})
+    ihk = sorted(ih)
+    ih0 = [ih[k] for k in ihk if pd.Timestamp(k) < mon]
+    ih1 = ih[ihk[-1]] if ihk else None
+    ih_w = (ih1 / ih0[-1] - 1) if (ih0 and ih1) else None
+    ih_all = (ih1 / st["ihsg_start"] - 1) if (ih1 and st.get("ihsg_start")) else None
+    L = [f"TRENDLINE v{VERSION.split()[0]} • {AKUN} • MINGGU {today.day} {today.strftime('%b %Y')}",
+         f"Ulangan rekomendasi dari data close {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'][D.weekday()]} {D.day} {D.strftime('%b %Y')} + tutup buku mingguan", "",
+         "━━ AKSI SENIN (sama dengan laporan Jumat) ━━"]
+    L += st.get("last_aksi", ["(laporan Jumat belum ada)"])
+    L += ["", f"━━ TUTUP BUKU MINGGU {mon.strftime('%d %b')}–{D.strftime('%d %b %Y')} ━━",
+          f"Ekuitas {_jt(e0)} → {_jt(e1)} | minggu ini {_pct(r_w)} vs IHSG {_pct(ih_w) if ih_w is not None else '-'}",
+          f"Transaksi ditutup minggu ini: {len(tr)} (untung {sum(1 for x in tr if x['pnl'] > 0)}, rugi {sum(1 for x in tr if x['pnl'] <= 0)}) | realized {_jt(rz_w)}"]
+    for x in tr:
+        L.append(f"  {x['kode']} {x['lot']} lot  {_f(x['harga_beli'])} → {_f(x['harga_jual'])}  {_pct(x['ret'])} / Rp{_f(x['pnl'])}")
+    L += ["", f"━━ POSISI ({len(st['pos'])}) ━━"]
+    snap = st.get("snap", {})
+    for k, p in st["pos"].items():
+        c = snap.get(k)
+        pl = (c * (1 - FEE_S) / (p["ent"] * (1 + FEE_B)) - 1) if c else None
+        L.append(f"  {k:5} {p['lot']} lot  avg {_f(p['ent'])}  close {_f(c)}  {_pct(pl) if pl is not None else '-'}  jual≤{_f(trigger_price(p['sl']))}"
+                 + ("  (JUAL Senin)" if p["sell"] else "")
+                 + (f"  ({st['pend_trim'][k]} lot dijual Senin, sisa {p['lot'] - st['pend_trim'][k]} lot)" if k in st.get("pend_trim", {}) else ""))
+    L += ["", f"━━ KUMULATIF sejak {st.get('start_date')} ━━",
+          f"Sistem {_pct(twr(st))} vs IHSG {_pct(ih_all) if ih_all is not None else '-'} | realized {_jt(rz_all)}",
+          f"Sudah disetor {_jt(st.get('disetor', st['modal_masuk']))} dari komitmen {_jt(st['modal_masuk'])} | sisa {_jt(sisa_komitmen(st))}"]
+    ps = perlu_setor(st)
+    aksi = (f"Setor {_jt(ps)} · " if ps > 0 else "") + "Beli " + (", ".join(f"{k} {_f(o['lot'])} lot ≤{_f(o['limit'])}" for k, o in st["pend_buy"].items()) or "-") \
+        + " · Jual " + (", ".join([f"{k} {_f(p['lot'])} lot" for k, p in st["pos"].items() if p["sell"]] + [f"{k} {_f(q)} lot (sebagian)" for k, q in st.get("pend_trim", {}).items() if k in st["pos"]]) or "-")
+    banner = f"Trendline – {AKUN_NAMA.title()}: Senin " + aksi + f" · minggu ini {_pct(r_w)} vs IHSG {_pct(ih_w) if ih_w is not None else '-'}"
+    ringkas = [f"TRENDLINE – {AKUN_NAMA}", f"Min {today.day} {today.strftime('%b %Y')} · aksi Senin (data close {D.day} {D.strftime('%b')})", ""] \
+        + _ringkas_rows(dict(st, last_report_pos={}), lambda k: snap.get(k) or st["pos"][k]["ent"], D) + ["",
+          (f"Setor {_jt(ps)} sebelum Senin pre-opening | " if ps > 0 else "Tidak perlu setor | ")
+          + f"Minggu ini {_pct(r_w)} vs IHSG {_pct(ih_w) if ih_w is not None else '-'} | Ekuitas {_jt(e1)}"]
+    st["last_week_close"] = str(today.date())
+    return dict(banner=banner, ringkas="\n".join(ringkas), text="\n".join(L))
+
+
+def run_sunday(state_path, out_path, today=None):
+    st = state_from_json(open(state_path).read())
+    rep = sunday_report(st, today)
+    open(state_path, "w").write(state_to_json(st))
+    open(out_path, "w").write(f"TANGGAL DATA: {st['last_date']}\nSTATUS: OK\nBANNER: {rep['banner']}\n\n{rep['ringkas']}"
+                              f"\n\n──────── LAPORAN LENGKAP ────────\n\n{rep['text']}\n")
+    return rep
+
+
+if __name__ == "__main__":
+    import sys
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    sp = args[0] if len(args) > 0 else "trendline_state.json"
+    op = args[1] if len(args) > 1 else "trendline_laporan.md"
+    if "--minggu" in sys.argv:
+        run_sunday(sp, op)
     else:
-        st.caption("Feed berita tidak tersedia (feedparser belum terpasang atau RSS gagal dibaca).")
-
-# =====================================================================
-# PANEL JURNAL
-# =====================================================================
-st.markdown("---")
-st.markdown("<h3 style='font-family:Orbitron;color:#00ffcc;font-size:18px'>📒 JURNAL</h3>",
-            unsafe_allow_html=True)
-
-J = muat_jurnal()
-terbuka = [t for t in J if t["status"] == "open"]
-ditutup = [t for t in J if t["status"] == "closed"]
-modal_per = int(modal_total/max(1, jml_posisi))
-
-m1, m2 = st.columns([1, 3])
-mode_papan = m1.radio("Mode papan", ["KONSENSUS", "EKSKLUSIF"], index=0, horizontal=True,
-    help="KONSENSUS: tiap preset ambil 3 teratasnya apa adanya, boleh sama. "
-         "EKSKLUSIF: draft bergiliran sehingga tiap preset dapat nama berbeda.")
-pick_n = m2.slider("Pick per preset", 1, 6, 3, 1)
-
-urutan = peringkat_semua_preset(lolos, makro)
-papan = alokasi_papan(urutan, mode_papan, pick_n)
-semua_slot = [t for v in papan.values() for t in v]
-unik = list(dict.fromkeys(semua_slot))
-hitung_dup = Counter(semua_slot)
-modal_per_unik = int(modal_total/max(1, len(unik)))
-
-if mode_papan == "KONSENSUS":
-    st.markdown("**Mode konsensus** — tiap preset mengambil pick teratasnya apa adanya. "
-                "Saham yang dipilih beberapa preset dibeli **sekali**; hasilnya tetap dihitung "
-                "untuk setiap preset yang memilihnya.")
-else:
-    st.markdown("**Mode eksklusif** — draft bergiliran, tiap preset mendapat nama berbeda yang "
-                "mewakili selera khasnya. Sebagian pick jadi lebih lemah secara absolut: "
-                "kamu menukar potensi untung dengan kemampuan membuktikan preset mana yang benar.")
-
-baris_papan = []
-for nama, tics in papan.items():
-    b = {"PRESET": nama}
-    for i in range(pick_n):
-        t = tics[i] if i < len(tics) else None
-        b[f"PICK {i+1}"] = ("–" if not t else
-                            (f"{t} ×{hitung_dup[t]}" if hitung_dup[t] > 1 else t))
-    baris_papan.append(b)
-st.dataframe(pd.DataFrame(baris_papan), use_container_width=True, hide_index=True)
-
-pesan = f"{len(semua_slot)} slot → **{len(unik)} saham unik** → Rp {modal_per_unik:,} per posisi".replace(",", ".")
-if mode_papan == "EKSKLUSIF" and len(unik) < len(PRESETS)*pick_n:
-    pesan += (f" · kolam kandidat hanya {len(lolos)} saham, tidak cukup untuk "
-              f"{len(PRESETS)*pick_n} slot berbeda — longgarkan saringan bila ingin penuh")
-st.caption(pesan)
-
-c1, c2, c3 = st.columns([3, 2, 3])
-with c1:
-    tambahan = st.multiselect(
-        "Tambah manual (semua kandidat lolos saringan)",
-        [r["SYMBOL"] for r in lolos], default=[],
-        help="Daftar ini mengikuti saringan di sidebar, bukan preset. "
-             "Untuk saham di luar saringan, pakai kolom di bawah.")
-    luar = st.multiselect("Tambah di luar saringan (seluruh emiten terhitung)",
-                          sorted(r["SYMBOL"] for r in rows), default=[])
-with c2:
-    st.metric("Modal per posisi", f"Rp {modal_per_unik:,}".replace(",", "."))
-    st.caption(f"{len(terbuka)} terbuka · {len(ditutup)} tertutup")
-with c3:
-    b1, b2 = st.columns(2)
-    if b1.button(f"➕ Masukkan papan ({len(unik)} posisi)", use_container_width=True):
-        n_baru = n_gab = 0
-        for nama, tics in papan.items():
-            for t in tics:
-                r = next((x for x in lolos if x["SYMBOL"] == t), None)
-                if r:
-                    hasil = tambah_jurnal(r, nama, modal_per_unik, tp_pct, sl_pct, hold_hari)
-                    n_baru += (hasil == "baru"); n_gab += (hasil == "gabung")
-        st.success(f"{len(semua_slot)} slot disaring jadi {n_baru} posisi baru "
-                   f"({n_gab} preset digabung ke posisi yang sudah ada).")
-        st.rerun()
-    if b2.button("➕ Masukkan manual", use_container_width=True):
-        n = 0
-        for t in tambahan + luar:
-            r = next((x for x in lolos if x["SYMBOL"] == t), None) or \
-                next((x for x in rows if x["SYMBOL"] == t), None)
-            if r:
-                r.setdefault("CONF", 50.0); r.setdefault("PEER_GAP", 0.0)
-                n += (tambah_jurnal(r, preset_nama, int(modal_total/max(1, jml_posisi)),
-                                    tp_pct, sl_pct, hold_hari) == "baru")
-        st.success(f"{n} posisi ditambahkan atas nama preset {preset_nama}.")
-        st.rerun()
-
-d1, d2 = st.columns(2)
-if d1.button("🔄 Bagi rata modal ke posisi terbuka", use_container_width=True):
-    if terbuka:
-        per = int(modal_total/len(terbuka))
-        for t in terbuka:
-            t["lot"] = max(1, int(per // (float(t["harga_beli"])*100)))
-            t["modal"] = round(float(t["harga_beli"])*t["lot"]*100)
-        simpan_jurnal(); st.rerun()
-if d2.button("🗑️ Kosongkan seluruh jurnal", use_container_width=True):
-    if st.session_state.get("konfirm_hapus"):
-        st.session_state.jurnal = []; simpan_jurnal()
-        st.session_state.konfirm_hapus = False; st.rerun()
-    else:
-        st.session_state.konfirm_hapus = True
-        st.warning("Klik sekali lagi untuk menghapus SELURUH jurnal.")
-
-if terbuka:
-    harga_kini = {r["SYMBOL"]: r["PRICE"] for r in rows}
-    baris = []
-    for t in terbuka:
-        px = harga_kini.get(t["kode"], float(t["harga_beli"]))
-        net, pct = hitung_pnl(t, px, fee_beli, fee_jual)
-        baris.append({"kode": t["kode"], "preset": t["preset"], "beli": float(t["harga_beli"]),
-                      "lot": int(t["lot"]), "modal": int(t["modal"]),
-                      "TP": int(round(float(t["harga_beli"])*(1+float(t["tp_persen"])/100))),
-                      "SL": int(round(float(t["harga_beli"])*(1-float(t["sl_persen"])/100))),
-                      "jatuh_tempo": t["jatuh_tempo"], "terakhir": int(px),
-                      "P/L": int(net), "P/L%": round(pct*100, 2)})
-    st.dataframe(pd.DataFrame(baris), use_container_width=True, hide_index=True)
-
-    with st.expander("Tutup posisi"):
-        k1, k2, k3, k4 = st.columns([2, 2, 2, 1])
-        pilih = k1.selectbox("Posisi", [t["kode"] for t in terbuka])
-        px_jual = k2.number_input("Harga jual", 0.0, 1e9,
-                                  float(harga_kini.get(pilih, 0)) or 0.0, 1.0)
-        sebab = k3.selectbox("Sebab", ["TP", "SL", "Waktu"])
-        if k4.button("Tutup"):
-            t = next(x for x in terbuka if x["kode"] == pilih)
-            t.update(status="closed", harga_jual=px_jual, sebab=sebab,
-                     tanggal_jual=datetime.now(WIB).strftime("%Y-%m-%d"))
-            simpan_jurnal(); st.rerun()
-
-if ditutup:
-    st.markdown("**Rekap per preset** — satu transaksi dihitung untuk setiap preset yang memilihnya")
-    per_preset = defaultdict(list)
-    for t in ditutup:
-        net, pct = hitung_pnl(t, float(t["harga_jual"]), fee_beli, fee_jual)
-        for nm in str(t["preset"]).split("|"):
-            per_preset[nm].append((net, pct))
-    rekap = []
-    for nm, arr in per_preset.items():
-        pcts = [p for _, p in arr]
-        rekap.append({"preset": nm, "n": len(arr),
-                      "menang%": round(100*sum(1 for p in pcts if p > 0)/len(pcts), 0),
-                      "rata2%": round(float(np.mean(pcts))*100, 2),
-                      "terbaik%": round(max(pcts)*100, 1), "terburuk%": round(min(pcts)*100, 1),
-                      "P/L": int(sum(n for n, _ in arr)),
-                      "keyakinan": "terlalu dini" if len(arr) < 10 else
-                                   "masih tipis" if len(arr) < 20 else
-                                   "mulai terbaca" if len(arr) < 30 else "cukup dinilai"})
-    st.dataframe(pd.DataFrame(rekap).sort_values("rata2%", ascending=False),
-                 use_container_width=True, hide_index=True)
-    st.caption(f"Titik impas pada TP {tp_pct}% / SL {sl_pct}% dengan fee {brk:.2f}% adalah "
-               f"{impas:.0f}% kemenangan. Preset dengan menang% di bawah itu sedang merugi.")
-
-if J:
-    st.download_button("⬇️ Unduh jurnal CSV",
-        pd.DataFrame(J, columns=KOLOM_JURNAL).to_csv(index=False).encode(),
-        f"jurnal-{datetime.now(WIB).strftime('%Y%m%d')}.csv", "text/csv")
-
-st.caption(f"Data Yahoo Finance, tertunda ±10-15 menit · jurnal tersimpan di {JURNAL_FILE} · "
-           "bukan rekomendasi investasi")
+        run_nightly(sp, op)
+    print(open(op).read())
