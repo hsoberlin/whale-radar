@@ -1133,12 +1133,115 @@ def run_sunday(state_path, out_path, today=None):
 
 
 if __name__ == "__main__":
-    import sys
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    sp = args[0] if len(args) > 0 else "trendline_state.json"
-    op = args[1] if len(args) > 1 else "trendline_laporan.md"
-    if "--minggu" in sys.argv:
-        run_sunday(sp, op)
+    import os
+    import streamlit as st
+
+    st.set_page_config(page_title=f"Trendline Engine — {AKUN}", layout="wide")
+    st.title(f"TRENDLINE ENGINE — {AKUN} ({AKUN_NAMA})")
+    st.caption(f"Versi: {VERSION}")
+
+    sp = "trendline_state.json"
+    op = "trendline_laporan.md"
+
+    with st.sidebar:
+        st.header("Pengaturan & Eksekusi")
+        modal_init = st.number_input(
+            "Modal Awal / Komitmen (Rp)",
+            min_value=1_000_000,
+            value=int(MODAL_AWAL),
+            step=5_000_000,
+        )
+        tunggu_detik = st.number_input(
+            "Jeda retry Yahoo Finance (detik)",
+            min_value=5,
+            max_value=300,
+            value=30,
+            step=5,
+        )
+        reset_state = st.checkbox("Buat / reset state baru saat inisialisasi", value=False)
+
+    if not os.path.exists(sp) or reset_state:
+        st.warning(f"File `{sp}` belum tersedia atau mode reset aktif. Silakan inisialisasi state terlebih dahulu.")
+        if st.button("Inisialisasi State Baru (Init Live)", type="primary"):
+            with st.spinner("Mengunduh data OHLCV & IHSG, menghitung indikator, dan membuat state awal..."):
+                raw_init = download_all()
+                ihsg_init = fetch_ihsg()
+                data_init, _ = clean_all(raw_init)
+                P_init = prepare(data_init)
+                set_ihsg(ihsg_init, data_init)
+                st_init = init_live(data_init, P_init, ihsg_init, float(modal_init))
+                open(sp, "w").write(state_to_json(st_init))
+                rep_init = nightly_report(st_init, data_init, P_init, ihsg_init)
+                open(sp, "w").write(state_to_json(st_init))
+                open(op, "w").write(
+                    f"TANGGAL DATA: {st_init['last_date']}\nSTATUS: OK\nBANNER: {rep_init['banner']}\n\n"
+                    f"{rep_init['ringkas']}\n\n──────── LAPORAN LENGKAP ────────\n\n{rep_init['text']}\n"
+                )
+            st.success("State awal berhasil dibuat!")
+            st.rerun()
+        st.stop()
+
+    st_curr = state_from_json(open(sp).read())
+    eq_last = st_curr["equity"][-1]["eq"] if st_curr.get("equity") else st_curr.get("cash", 0.0)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Data Terakhir", st_curr.get("last_date") or "-")
+    c2.metric("Ekuitas", rp(eq_last) if "rp" in globals() else _jt(eq_last))
+    c3.metric("Kas Sistem", _jt(st_curr.get("cash", 0.0)))
+    c4.metric("Posisi Aktif", f"{len(st_curr.get('pos', {}))} saham")
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Jalankan Update Malam (Nightly)", type="primary", use_container_width=True):
+            with st.spinner("Mengunduh data terbaru & memproses laporan malam..."):
+                res = run_nightly(sp, op, wait=int(tunggu_detik))
+            if res["status"] == "OK":
+                st.success(f"Selesai! {res['banner']}")
+                st.rerun()
+            else:
+                st.warning(res["msg"])
+
+    with col2:
+        if st.button("Jalankan Laporan Minggu (--minggu)", use_container_width=True):
+            with st.spinner("Menyusun laporan Minggu & tutup buku mingguan..."):
+                res_w = run_sunday(sp, op)
+            st.success(f"Selesai! {res_w['banner']}")
+            st.rerun()
+
+    if os.path.exists(op):
+        raw_rep = open(op).read()
+        tab_ringkas, tab_lengkap, tab_raw, tab_backup = st.tabs([
+            "Laporan Ringkas",
+            "Laporan Lengkap",
+            "Teks Mentah (.md)",
+            "Backup State (.json)"
+        ])
+
+        ringkas_txt, lengkap_txt = raw_rep, raw_rep
+        marker = "──────── LAPORAN LENGKAP ────────"
+        if marker in raw_rep:
+            parts = raw_rep.split(marker, 1)
+            ringkas_txt = parts[0].strip()
+            lengkap_txt = parts[1].strip()
+
+        with tab_ringkas:
+            st.code(ringkas_txt, language="text")
+
+        with tab_lengkap:
+            st.code(lengkap_txt, language="text")
+
+        with tab_raw:
+            st.text_area("Salin seluruh teks laporan:", raw_rep, height=450)
+
+        with tab_backup:
+            st.info("Unduh `trendline_state.json` setelah update berhasil jika ingin menyimpannya sebagai backup atau meng-commit ke GitHub.")
+            st.download_button(
+                label="Unduh trendline_state.json",
+                data=open(sp).read(),
+                file_name="trendline_state.json",
+                mime="application/json",
+            )
     else:
-        run_nightly(sp, op)
-    print(open(op).read())
+        st.info("Belum ada file laporan (`trendline_laporan.md`). Klik **Jalankan Update Malam** untuk menghasilkan laporan.")
